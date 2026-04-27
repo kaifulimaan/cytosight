@@ -59,70 +59,11 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:8080",
 ]
 
-# Helper to check if origin is allowed (supports wildcards and subdomains)
-def is_origin_allowed(origin: str) -> bool:
-    if not origin or origin == "":
-        return True
-    if origin in ALLOWED_ORIGINS:
-        return True
-    if origin.endswith(".lovable.app") or origin.endswith(".lovableproject.com"):
-        return True
-    # Allow all for now to unblock deployment issues
-    return True
-
-# --- ✅ CRITICAL: Handle preflight FIRST (before any other middleware) ---
-@app.middleware("http")
-async def handle_cors_preflight(request: Request, call_next):
-    """
-    Handle CORS preflight OPTIONS requests.
-    This MUST run before other middleware.
-    """
-    origin = request.headers.get("origin", "")
-    
-    # Handle OPTIONS preflight requests
-    if request.method == "OPTIONS":
-        logger.info(f"🔍 Preflight OPTIONS request from origin: {origin}")
-        
-        if is_origin_allowed(origin):
-            return JSONResponse(
-                status_code=200,
-                headers={
-                    "Access-Control-Allow-Origin": origin or "*",
-                    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
-                    "Access-Control-Allow-Credentials": "true",
-                    "Access-Control-Max-Age": "3600",
-                }
-            )
-        else:
-            logger.warning(f"❌ Origin not allowed: {origin}")
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Origin not allowed"}
-            )
-    
-    # Process normal requests
-    try:
-        response = await call_next(request)
-        
-        # Add CORS headers to response
-        if is_origin_allowed(origin):
-            response.headers["Access-Control-Allow-Origin"] = origin or "*"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Expose-Headers"] = "Content-Type, Authorization"
-        
-        return response
-    except Exception as e:
-        logger.error(f"❌ Error processing request: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": str(e)}
-        )
-
-# --- CORS Middleware (secondary layer) ---
+# --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.lovable\.app|https://.*\.lovableproject\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -149,29 +90,7 @@ async def health_check():
         "version": "1.0.0"
     }
 
-# --- Catch-all OPTIONS handler ---
-@app.options("/{full_path:path}", tags=["CORS"])
-async def catch_all_options(full_path: str, request: Request):
-    """
-    Catch-all OPTIONS handler for any endpoint.
-    Useful for ngrok compatibility.
-    """
-    origin = request.headers.get("origin", "")
-    logger.info(f"🔍 Catch-all OPTIONS for /{full_path} from {origin}")
-    
-    if origin in ALLOWED_ORIGINS or origin == "":
-        return JSONResponse(
-            status_code=200,
-            headers={
-                "Access-Control-Allow-Origin": origin or "*",
-                "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
-                "Access-Control-Allow-Credentials": "true",
-                "Access-Control-Max-Age": "3600",
-            }
-        )
-    else:
-        return JSONResponse(status_code=403, content={"detail": "Origin not allowed"})
+
 
 if __name__ == "__main__":
     import uvicorn
