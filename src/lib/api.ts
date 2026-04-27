@@ -27,8 +27,8 @@ function getBaseUrl(): string {
   }
 
   // Priority 4: Production fallback
-  console.warn('⚠️ Running on production domain - ngrok URL not set');
-  return 'http://localhost:8000/api';
+  console.log('☁️ Running on production domain - using Hugging Face backend');
+  return 'https://kimaan28-cytosight.hf.space/api';
 }
 
 function getCurrentBaseUrl(): string {
