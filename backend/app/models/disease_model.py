@@ -90,8 +90,7 @@ class ViTBackbone(nn.Module):
                 HF_BACKBONE_REPO,
                 trust_remote_code=True,
                 local_files_only=False,  # Allow downloading
-                force_download=False,  # Use cache if available
-                resume_download=True   # Allow resuming interrupted downloads
+                force_download=False  # Use cache if available
             )
             logger.info(f"✅ ViT backbone loaded from HuggingFace: {HF_BACKBONE_REPO}")
             self._loaded = True
