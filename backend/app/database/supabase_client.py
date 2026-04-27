@@ -39,13 +39,18 @@ def initialize_storage():
         bucket_names = [bucket.name for bucket in buckets]
         
         if IMAGES_BUCKET not in bucket_names:
-            # Create bucket
+            # Create bucket as public
             supabase.storage.create_bucket(
                 IMAGES_BUCKET,
-                options={"public": False}  # Private bucket, requires authentication
+                options={"public": True}
             )
-            logger.info(f"Created storage bucket: {IMAGES_BUCKET}")
+            logger.info(f"Created public storage bucket: {IMAGES_BUCKET}")
         else:
-            logger.info(f"Storage bucket already exists: {IMAGES_BUCKET}")
+            # Ensure the bucket is public if it already exists
+            supabase.storage.update_bucket(
+                IMAGES_BUCKET,
+                options={"public": True}
+            )
+            logger.info(f"Updated storage bucket to public: {IMAGES_BUCKET}")
     except Exception as e:
         logger.error(f"Error initializing storage: {e}")
