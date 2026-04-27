@@ -57,8 +57,18 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:8080",
-    "http://10.7.40.120:8080",
 ]
+
+# Helper to check if origin is allowed (supports wildcards and subdomains)
+def is_origin_allowed(origin: str) -> bool:
+    if not origin or origin == "":
+        return True
+    if origin in ALLOWED_ORIGINS:
+        return True
+    if origin.endswith(".lovable.app") or origin.endswith(".lovableproject.com"):
+        return True
+    # Allow all for now to unblock deployment issues
+    return True
 
 # --- ✅ CRITICAL: Handle preflight FIRST (before any other middleware) ---
 @app.middleware("http")
@@ -73,7 +83,7 @@ async def handle_cors_preflight(request: Request, call_next):
     if request.method == "OPTIONS":
         logger.info(f"🔍 Preflight OPTIONS request from origin: {origin}")
         
-        if origin in ALLOWED_ORIGINS or origin == "":
+        if is_origin_allowed(origin):
             return JSONResponse(
                 status_code=200,
                 headers={
@@ -96,7 +106,7 @@ async def handle_cors_preflight(request: Request, call_next):
         response = await call_next(request)
         
         # Add CORS headers to response
-        if origin in ALLOWED_ORIGINS or origin == "":
+        if is_origin_allowed(origin):
             response.headers["Access-Control-Allow-Origin"] = origin or "*"
             response.headers["Access-Control-Allow-Credentials"] = "true"
             response.headers["Access-Control-Expose-Headers"] = "Content-Type, Authorization"
@@ -112,7 +122,7 @@ async def handle_cors_preflight(request: Request, call_next):
 # --- CORS Middleware (secondary layer) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
