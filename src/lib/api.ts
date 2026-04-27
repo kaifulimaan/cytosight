@@ -10,8 +10,10 @@ function getBaseUrl(): string {
   // Priority 2: Check environment variable
   if (typeof import.meta.env.VITE_BACKEND_URL !== 'undefined' && import.meta.env.VITE_BACKEND_URL) {
     const envUrl = import.meta.env.VITE_BACKEND_URL;
-    console.log('✅ Using VITE_BACKEND_URL:', envUrl);
-    return envUrl;
+    // Add /api suffix if not present
+    const finalUrl = envUrl.endsWith('/api') ? envUrl : `${envUrl.replace(/\/$/, '')}/api`;
+    console.log('✅ Using VITE_BACKEND_URL:', finalUrl);
+    return finalUrl;
   }
 
   // Priority 3: Check if running on local development
