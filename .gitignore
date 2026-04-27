@@ -1,0 +1,41 @@
+# Node / Frontend / Bun
+node_modules/
+dist/
+build/
+bun.lockb
+bun.lock
+*.lockb
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.env
+backend/.env
+
+# Model Checkpoints (CRITICAL: Do not push large weights to Git)
+*.pth
+*.safetensors
+backend/ml_models/
+backend/phikonv2/
+ml_models/
+
+# Database
+*.db
+*.sqlite
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.project
+.pydevproject
+.settings/

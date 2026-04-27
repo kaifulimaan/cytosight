@@ -1,0 +1,37 @@
+# Ignore Frontend (React/Vite)
+node_modules/
+src/
+public/
+dist/
+index.html
+package.json
+package-lock.json
+tsconfig.json
+vite.config.ts
+
+# Ignore Python Artifacts
+backend/__pycache__/
+backend/*.py[cod]
+backend/.venv/
+.venv/
+__pycache__/
+
+# Ignore local checkpoints (Forces download from HF Hub)
+backend/ml_models/*.pth
+backend/ml_models/segmentation/*.pth
+backend/phikonv2/
+ml_models/
+*.pth
+*.safetensors
+
+# Ignore Secrets and DB
+backend/.env
+.env
+*.db
+*.sqlite
+
+# Ignore Git and OS
+.git/
+.gitignore
+.DS_Store
+Thumbs.db

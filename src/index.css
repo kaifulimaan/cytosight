@@ -1,0 +1,299 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CytoSight Design System - Dark Theme with Blue/Green Accents */
+
+@layer base {
+  :root {
+    /* Dark backgrounds - using hex converted to HSL */
+    --background: 0 0% 10%; /* #1a1a1a */
+    --background-deep: 0 0% 6%; /* #0f0f0f */
+    --background-card: 0 0% 18%; /* #2d2d2d */
+    --foreground: 0 0% 100%; /* #ffffff */
+
+    /* Cards */
+    --card: 0 0% 18%; /* #2d2d2d */
+    --card-foreground: 0 0% 100%;
+    --card-glass: 0 0% 17%; /* #2a2a2a */
+
+    --popover: 0 0% 18%;
+    --popover-foreground: 0 0% 100%;
+
+    /* Primary - Bright Blue */
+    --primary: 195 100% 50%; /* #00bfff */
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 195 100% 60%;
+
+    /* Secondary - Deep Blue */
+    --secondary: 210 100% 40%; /* #0066cc */
+    --secondary-foreground: 0 0% 100%;
+
+    /* Accent - Medium Blue */
+    --accent: 233 67% 60%; /* #5a67d8 */
+    --accent-foreground: 0 0% 100%;
+
+    /* Success - Lime Green (for "Sight" branding) */
+    --success: 72 100% 42%; /* #a8d500 */
+    --success-foreground: 0 0% 10%;
+
+    /* Muted for subtle elements */
+    --muted: 0 0% 17%; /* #2a2a2a */
+    --muted-foreground: 218 11% 65%; /* #9ca3af */
+
+    /* Destructive - Red */
+    --destructive: 0 84% 60%; /* #ef4444 */
+    --destructive-foreground: 0 0% 100%;
+
+    /* Warning - Orange */
+    --warning: 28 87% 57%; /* #ed8936 */
+    --warning-foreground: 0 0% 10%;
+
+    /* Borders and inputs */
+    --border: 217 19% 27%; /* #374151 */
+    --border-light: 214 32% 91%; /* #e2e8f0 */
+    --border-medium: 214 20% 69%; /* #a0aec0 */
+    --input: 0 0% 10%; /* #1a1a1a */
+    --ring: 195 100% 50%; /* #00bfff */
+
+    --radius: 0.75rem;
+
+    /* Text colors */
+    --text-primary: 0 0% 100%; /* #ffffff */
+    --text-secondary: 218 11% 82%; /* #d1d5db */
+    --text-muted: 218 11% 65%; /* #9ca3af */
+    --text-placeholder: 217 10% 47%; /* #6b7280 */
+
+    /* Stage colors */
+    --stage-1: 51 100% 50%; /* #ffd700 Gold */
+    --stage-2: 33 100% 50%; /* #ff8c00 Dark Orange */
+    --stage-3: 9 100% 64%; /* #ff6347 Tomato */
+    --stage-4: 0 100% 27%; /* #8b0000 Dark Red */
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 10%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 195 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 17%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 217 19% 27%;
+    --sidebar-ring: 195 100% 50%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(210 100% 40%), hsl(195 100% 50%));
+    --gradient-secondary: linear-gradient(135deg, hsl(210 100% 40%), hsl(233 67% 60%));
+    --gradient-danger: linear-gradient(135deg, hsl(0 72% 51%), hsl(0 84% 60%));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 17% / 0.8), hsl(0 0% 10% / 0.9));
+    --gradient-glow: radial-gradient(ellipse at center, hsl(195 100% 50% / 0.15), transparent 70%);
+    --gradient-background: linear-gradient(135deg, hsl(0 0% 17%), hsl(0 0% 10%));
+
+    /* Shadows */
+    --shadow-glow: 0 0 30px hsl(195 100% 50% / 0.3);
+    --shadow-card: 0 8px 32px hsl(0 0% 0% / 0.3);
+    --shadow-button: 0 4px 20px hsl(195 100% 50% / 0.4);
+  }
+
+  .dark {
+    /* Same as root - dark theme is default */
+    --background: 0 0% 10%;
+    --background-deep: 0 0% 6%;
+    --foreground: 0 0% 100%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--background-deep));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.6);
+  }
+}
+
+@layer components {
+  /* Glassmorphism card effect */
+  .glass-card {
+    background: linear-gradient(145deg, hsl(228 30% 20% / 0.7), hsl(228 30% 15% / 0.8));
+    backdrop-filter: blur(20px);
+    border: 1px solid hsl(var(--border) / 0.3);
+    box-shadow: 0 8px 32px hsl(0 0% 0% / 0.3);
+  }
+
+  .glass-card-hover:hover {
+    border-color: hsl(var(--primary) / 0.5);
+    box-shadow: 0 8px 32px hsl(0 0% 0% / 0.3), 0 0 20px hsl(var(--primary) / 0.2);
+  }
+
+  /* Glowing border effect */
+  .glow-border {
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 0 0 1px hsl(var(--border) / 0.5), inset 0 0 20px hsl(var(--primary) / 0.05);
+  }
+
+  .glow-border:focus-within {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.5), 0 0 20px hsl(var(--primary) / 0.3);
+  }
+
+  /* Primary button with glow */
+  .btn-primary-glow {
+    background: var(--gradient-primary);
+    color: hsl(var(--primary-foreground));
+    box-shadow: 0 4px 20px hsl(var(--primary) / 0.4);
+    transition: all 0.3s ease;
+  }
+
+  .btn-primary-glow:hover {
+    box-shadow: 0 6px 30px hsl(var(--primary) / 0.6);
+    transform: translateY(-2px);
+  }
+
+  /* Secondary button */
+  .btn-secondary-glow {
+    background: var(--gradient-secondary);
+    color: hsl(var(--secondary-foreground));
+    box-shadow: 0 4px 20px hsl(var(--secondary) / 0.3);
+    transition: all 0.3s ease;
+  }
+
+  .btn-secondary-glow:hover {
+    box-shadow: 0 6px 25px hsl(var(--secondary) / 0.5);
+    transform: translateY(-2px);
+  }
+
+  /* Danger button */
+  .btn-danger-glow {
+    background: var(--gradient-danger);
+    color: hsl(var(--destructive-foreground));
+    box-shadow: 0 4px 20px hsl(var(--destructive) / 0.3);
+    transition: all 0.3s ease;
+  }
+
+  .btn-danger-glow:hover {
+    box-shadow: 0 6px 25px hsl(var(--destructive) / 0.5);
+    transform: translateY(-2px);
+  }
+
+  /* Dashed upload zone */
+  .upload-zone {
+    border: 2px dashed hsl(var(--border));
+    background: hsl(var(--card) / 0.5);
+    transition: all 0.3s ease;
+  }
+
+  .upload-zone:hover,
+  .upload-zone.drag-over {
+    border-color: hsl(var(--primary));
+    background: hsl(var(--primary) / 0.05);
+  }
+
+  /* Placeholder box for backend content */
+  .placeholder-box {
+    background: hsl(var(--muted) / 0.3);
+    border: 1px dashed hsl(var(--muted-foreground) / 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: hsl(var(--muted-foreground));
+    font-style: italic;
+  }
+
+  /* Cellular background pattern */
+  .cellular-bg {
+    background-image: 
+      radial-gradient(ellipse 600px 600px at 10% 20%, hsl(195 100% 50% / 0.08), transparent),
+      radial-gradient(ellipse 400px 400px at 90% 80%, hsl(72 100% 42% / 0.06), transparent),
+      radial-gradient(ellipse 500px 500px at 50% 50%, hsl(210 100% 40% / 0.05), transparent);
+  }
+
+  /* Floating orbs animation */
+  .floating-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(60px);
+    opacity: 0.4;
+    animation: float 8s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0) translateX(0);
+    }
+    25% {
+      transform: translateY(-20px) translateX(10px);
+    }
+    50% {
+      transform: translateY(-10px) translateX(-10px);
+    }
+    75% {
+      transform: translateY(-30px) translateX(5px);
+    }
+  }
+
+  /* Text gradient */
+  .text-gradient-primary {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Input styling */
+  .input-medical {
+    background: hsl(var(--input));
+    border: 1px solid hsl(var(--border) / 0.5);
+    color: hsl(var(--foreground));
+    transition: all 0.3s ease;
+  }
+
+  .input-medical:focus {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
+    outline: none;
+  }
+
+  .input-medical::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+@layer utilities {
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+
+  @keyframes glow {
+    from {
+      box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+    }
+    to {
+      box-shadow: 0 0 40px hsl(var(--primary) / 0.5);
+    }
+  }
+}
