@@ -865,16 +865,25 @@ async def get_diagnosis_history(
             ).order_by(Diagnosis.created_at.desc()).all()
             history_items = [_build_history_item_from_record(diagnosis) for diagnosis in diagnoses]
         except Exception as db_err:
-            logger.warning(f"[HISTORY] ⚠️ SQL history query failed, trying Supabase REST fallback: {db_err}")
+            logger.warning(f"[HISTORY] ⚠️ SQL history query failed: {db_err}")
+            
+        if not history_items:
             try:
+                # Fallback path 1: Supabase REST
                 supabase_rows = supabase.table("diagnoses").select(
                     "id,disease_name,severity,stage,confidence_disease,confidence_severity,confidence_stage,original_image_url,created_at"
                 ).eq("user_id", user_id).order("created_at", desc=True).execute()
                 rows = getattr(supabase_rows, "data", None) or []
                 history_items = [_build_history_item_from_dict(row) for row in rows]
             except Exception as rest_err:
-                logger.warning(f"[HISTORY] ⚠️ Supabase REST history fallback failed, trying Storage fallback: {rest_err}")
+                logger.warning(f"[HISTORY] ⚠️ Supabase REST history fallback failed: {rest_err}")
+
+        if not history_items:
+            try:
+                # Fallback path 2: Storage
                 history_items = _load_diagnoses_from_storage_history(str(user_id))
+            except Exception as storage_err:
+                logger.warning(f"[HISTORY] ⚠️ Storage history fallback failed: {storage_err}")
 
         logger.info(f"[HISTORY] ✅ Retrieved {len(history_items)} diagnoses")
 

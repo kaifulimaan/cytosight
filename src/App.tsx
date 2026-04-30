@@ -10,6 +10,7 @@ import Upload from "./pages/Upload";
 import DiagnosisResults from "./pages/DiagnosisResults";
 import SegmentationResults from "./pages/SegmentationResults";
 import History from "./pages/History";
+import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
           <Route path="/diagnosis-results" element={<DiagnosisResults />} />
           <Route path="/segmentation-results" element={<SegmentationResults />} />
           <Route path="/history" element={<History />} />
+          <Route path="/about" element={<About />} />
           
           {/* Catch-all for 404 */}
           <Route path="*" element={<NotFound />} />

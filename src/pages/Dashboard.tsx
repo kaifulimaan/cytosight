@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, ChevronDown, LogOut, Settings, History, Trash2 } from "lucide-react";
+import { User, ChevronDown, LogOut, History, Trash2 } from "lucide-react";
 import CellularBackground from "@/components/CellularBackground";
 import CytoSightLogo from "@/components/CytoSightLogo";
 import GlassCard from "@/components/GlassCard";
@@ -76,11 +76,6 @@ const Dashboard = () => {
                 </p>
                 <p className="text-xs text-muted-foreground">{displayUser.email}</p>
               </div>
-              <DropdownMenuItem className="cursor-pointer">
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="cursor-pointer text-destructive focus:text-destructive"
                 onClick={handleLogout}
@@ -149,7 +144,10 @@ const Dashboard = () => {
             </div>
 
             {/* About Link */}
-            <button className="mt-10 text-muted-foreground hover:text-primary transition-colors text-sm">
+            <button 
+              className="mt-10 text-muted-foreground hover:text-primary transition-colors text-sm"
+              onClick={() => navigate("/about")}
+            >
               About CytoSight
             </button>
           </GlassCard>
