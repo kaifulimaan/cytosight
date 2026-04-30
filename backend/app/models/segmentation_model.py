@@ -299,15 +299,26 @@ class SegmentationPipeline:
             
         return filled_mask
 
-    def _segment_small(self, image: Image.Image) -> np.ndarray:
+    def _segment_small(self, image: Image.Image) -> Tuple[np.ndarray, np.ndarray]:
         original_size = image.size
         resized = image.resize((self.tile_size, self.tile_size), Image.Resampling.LANCZOS)
         tensor = self.to_tensor(resized)
-        recon = self._reconstruct(tensor)
-        mask = self._make_binary_mask(recon)
-        return np.array(Image.fromarray(mask).resize(original_size, Image.Resampling.NEAREST), dtype=np.uint8)
+        recon_tensor = self._reconstruct(tensor)
+        
+        # Binary mask from reconstruction
+        mask = self._make_binary_mask(recon_tensor)
+        
+        # Reconstructed RGB image
+        recon_np = recon_tensor.squeeze(0).cpu().numpy().transpose(1, 2, 0)
+        recon_rgb = (np.clip(recon_np, 0, 1) * 255).astype(np.uint8)
+        
+        # Resize both back to original size
+        final_mask = np.array(Image.fromarray(mask).resize(original_size, Image.Resampling.NEAREST), dtype=np.uint8)
+        final_recon = np.array(Image.fromarray(recon_rgb).resize(original_size, Image.Resampling.LANCZOS), dtype=np.uint8)
+        
+        return final_mask, final_recon
 
-    def _segment_large_tiled(self, image: Image.Image) -> np.ndarray:
+    def _segment_large_tiled(self, image: Image.Image) -> Tuple[np.ndarray, np.ndarray]:
         width, height = image.size
         tile_size = self.tile_size
 
@@ -321,7 +332,8 @@ class SegmentationPipeline:
         padded = Image.new("RGB", (padded_w, padded_h), color=mean_color)
         padded.paste(image, (0, 0))
 
-        stitched = np.zeros((padded_h, padded_w), dtype=np.uint8)
+        stitched_mask = np.zeros((padded_h, padded_w), dtype=np.uint8)
+        stitched_recon = np.zeros((padded_h, padded_w, 3), dtype=np.uint8)
 
         for y in range(tiles_y):
             for x in range(tiles_x):
@@ -332,13 +344,18 @@ class SegmentationPipeline:
 
                 tile = padded.crop((x0, y0, x1, y1))
                 tile_tensor = self.to_tensor(tile)
-                recon = self._reconstruct(tile_tensor)
-                # Process Segmentation Mask with Otsu thresholding, morphology, and hole filling
-                # _make_binary_mask already applies all three: thresholding + denoising + hole filling
-                tile_mask = self._make_binary_mask(recon)
-                stitched[y0:y1, x0:x1] = tile_mask
+                recon_tensor = self._reconstruct(tile_tensor)
+                
+                # Mask
+                tile_mask = self._make_binary_mask(recon_tensor)
+                stitched_mask[y0:y1, x0:x1] = tile_mask
+                
+                # Recon
+                recon_np = recon_tensor.squeeze(0).cpu().numpy().transpose(1, 2, 0)
+                recon_rgb = (np.clip(recon_np, 0, 1) * 255).astype(np.uint8)
+                stitched_recon[y0:y1, x0:x1] = recon_rgb
 
-        return stitched[:height, :width]
+        return stitched_mask[:height, :width], stitched_recon[:height, :width]
 
     def _estimate_image_size_bytes(self, image: Image.Image) -> int:
         """Estimate the image file size in bytes by serializing to PNG format.
@@ -353,7 +370,7 @@ class SegmentationPipeline:
             logger.warning("[SEGMENTATION] Could not estimate image size: %s. Using pixel-based estimate.", err)
             return width * height * 3
 
-    def segment(self, image: Image.Image, file_size_bytes: int | None = None) -> Tuple[np.ndarray, Dict[str, Any]]:
+    def segment(self, image: Image.Image, file_size_bytes: int | None = None) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
         """Segment image using tiling only if image is > 1.5 MB.
         
         Args:
@@ -361,7 +378,7 @@ class SegmentationPipeline:
             file_size_bytes: Optional file size in bytes. If not provided, estimated from image data.
         
         Returns:
-            Tuple of (mask array, metadata dict)
+            Tuple of (mask array, reconstruction array, metadata dict)
         """
         width, height = image.size
         
@@ -373,9 +390,9 @@ class SegmentationPipeline:
         use_tiling = file_size_bytes > threshold_bytes
 
         if use_tiling:
-            mask = self._segment_large_tiled(image)
+            mask, recon = self._segment_large_tiled(image)
         else:
-            mask = self._segment_small(image)
+            mask, recon = self._segment_small(image)
 
         metadata = {
             "width": width,
@@ -383,7 +400,7 @@ class SegmentationPipeline:
             "tile_size": self.tile_size,
             "tiling_used": use_tiling,
         }
-        return mask, metadata
+        return mask, recon, metadata
 
     @staticmethod
     def mask_to_png_bytes(mask: np.ndarray) -> bytes:
@@ -391,6 +408,17 @@ class SegmentationPipeline:
         buffer = io.BytesIO()
         img.save(buffer, format="PNG")
         return buffer.getvalue()
+
+
+    @staticmethod
+    def image_to_base64(image_np: np.ndarray) -> str:
+        """Convert numpy image (RGB) to base64 PNG string."""
+        import base64
+        img = Image.fromarray(image_np.astype(np.uint8))
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        return f"data:image/png;base64,{encoded}"
 
 
 _segmentation_pipeline: SegmentationPipeline | None = None

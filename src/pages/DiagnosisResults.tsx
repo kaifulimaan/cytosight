@@ -134,7 +134,7 @@ const DiagnosisResults = () => {
                   <CheckCircle2 className="w-8 h-8 text-success" />
                 )}
               </div>
-              <p className="text-lg text-muted-foreground">
+              <p className="text-xl text-foreground font-medium">
                 {diagnosisData.diagnosis}
               </p>
             </GlassCard>
@@ -267,11 +267,11 @@ const DiagnosisResults = () => {
                             <div className="p-2 bg-background rounded-lg shadow-sm group-hover:scale-110 transition-transform duration-300">
                               {getIcon(section.title)}
                             </div>
-                            <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
+                            <h3 className="text-base font-bold text-primary uppercase tracking-wider">
                               {section.title.replace(/[\[\]]/g, '')}
                             </h3>
                           </div>
-                          <p className="text-muted-foreground leading-relaxed pl-12 italic border-l-2 border-primary/10 ml-5">
+                          <p className="text-foreground text-lg leading-relaxed pl-12 border-l-2 border-primary/20 ml-5 font-medium">
                             {section.content}
                           </p>
                         </div>

@@ -38,6 +38,7 @@ class SegmentationResponse(BaseModel):
     original_image_url: str
     segmented_mask_path: str
     segmented_mask_url: str
+    reconstructed_image_url: str
     mask_download_name: str
     width: int
     height: int
@@ -217,8 +218,9 @@ async def predict_segmentation(
         _upload_to_storage(original_path, original_png.getvalue(), "image/png")
 
     pipeline = get_segmentation_pipeline()
-    mask, metadata = pipeline.segment(image)
+    mask, recon, metadata = pipeline.segment(image)
     mask_png_bytes = pipeline.mask_to_png_bytes(mask)
+    reconstructed_base64 = pipeline.image_to_base64(recon)
 
     mask_path = f"{user_id}/segmentations/masks/{timestamp}_{request_id}_mask.png"
     _upload_to_storage(mask_path, mask_png_bytes, "image/png")
@@ -231,6 +233,7 @@ async def predict_segmentation(
         original_image_url=original_url,
         segmented_mask_path=mask_path,
         segmented_mask_url=mask_url,
+        reconstructed_image_url=reconstructed_base64,
         mask_download_name=f"segmented_mask_{timestamp}.png",
         width=int(metadata["width"]),
         height=int(metadata["height"]),
