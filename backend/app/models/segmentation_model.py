@@ -236,13 +236,14 @@ class SegmentationPipeline:
         return recon
 
     def _fill_holes_intelligently(self, binary_mask: np.ndarray) -> np.ndarray:
-        """Fill white holes inside cells intelligently based on area ratios.
-        Adapted from reference code for clean mask generation."""
-        if np.sum(binary_mask == 255) < 100:
+        """Fill holes inside cells intelligently based on area ratios.
+        Direct port from Kaggle code."""
+        if np.sum(binary_mask == 0) < 100:
             return binary_mask
         
         filled_mask = binary_mask.copy()
-        contours, hierarchy = cv2.findContours(binary_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        inverted = cv2.bitwise_not(binary_mask)
+        contours, hierarchy = cv2.findContours(inverted, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
         
         if hierarchy is None or len(contours) == 0:
             return binary_mask
@@ -261,37 +262,41 @@ class SegmentationPipeline:
                 if parent_area > 50 and hole_area > 5:
                     area_ratio = hole_area / parent_area
                     
-                    # Fill holes based on area ratios (balanced parameters for web deployment)
-                    if area_ratio < 0.5 and hole_area < 5000:
-                        cv2.drawContours(filled_mask, [hole_contour], -1, 255, -1)
+                    if area_ratio < 0.4 and hole_area < 2000:
+                        cv2.drawContours(filled_mask, [hole_contour], -1, 0, -1)
         
         return filled_mask
 
     def _make_binary_mask(self, recon_tensor: torch.Tensor) -> np.ndarray:
         """Creates a binary mask using Otsu thresholding with hole filling.
-        Follows reference code: standard image processing path."""
+        Direct port from Kaggle code: create_binary_mask_from_recon."""
         recon_np = recon_tensor.squeeze(0).cpu().numpy().transpose(1, 2, 0)
-        recon_uint8 = (np.clip(recon_np, 0, 1) * 255).astype(np.uint8)
+        recon_np = np.clip(recon_np, 0, 1)
+        recon_uint8 = (recon_np * 255).astype(np.uint8)
 
-        # Convert to grayscale using CV2 (matching reference code)
+        # Convert to grayscale
         gray = cv2.cvtColor(recon_uint8, cv2.COLOR_RGB2GRAY)
         
-        # Apply Otsu thresholding (matching reference code)
-        _, binary_mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # Gaussian Blur
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         
-        # Invert if cells (darker areas) are incorrectly mapped to black (0)
-        fg_mask = binary_mask == 255
-        bg_mask = binary_mask == 0
-        if fg_mask.any() and bg_mask.any() and np.mean(gray[fg_mask]) > np.mean(gray[bg_mask]):
+        # Otsu thresholding
+        _, binary_mask = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # White ratio inversion logic
+        white_pixels = np.sum(binary_mask == 255)
+        total_pixels = binary_mask.size
+        white_ratio = white_pixels / total_pixels
+        
+        if white_ratio < 0.5:
             binary_mask = cv2.bitwise_not(binary_mask)
         
-        # Apply morphological noise removal (matching reference code for standard images)
-        kernel = np.ones((7, 7), np.uint8)
-        denoised_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_OPEN, kernel)
-        
-        # Fill holes intelligently
-        filled_mask = self._fill_holes_intelligently(denoised_mask)
-        
+        # Intelligent hole filling
+        if np.sum(binary_mask == 255) > 100:
+            filled_mask = self._fill_holes_intelligently(binary_mask)
+        else:
+            filled_mask = binary_mask
+            
         return filled_mask
 
     def _segment_small(self, image: Image.Image) -> np.ndarray:
