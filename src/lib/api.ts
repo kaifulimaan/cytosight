@@ -347,3 +347,20 @@ export function logout() {
   localStorage.removeItem('user');
   console.log('[LOGOUT] User logged out');
 }
+
+export async function clearAllHistory(token: string) {
+  const res = await fetch(`${getCurrentBaseUrl()}/diagnosis/history`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "Failed to clear history");
+  }
+
+  return res.json();
+}

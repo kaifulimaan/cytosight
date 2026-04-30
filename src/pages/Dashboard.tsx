@@ -5,7 +5,8 @@ import CellularBackground from "@/components/CellularBackground";
 import CytoSightLogo from "@/components/CytoSightLogo";
 import GlassCard from "@/components/GlassCard";
 import MedicalButton from "@/components/MedicalButton";
-import { getCurrentUser, logout as logoutApi, isLoggedIn } from "@/lib/api";
+import { getCurrentUser, logout as logoutApi, isLoggedIn, clearAllHistory, getToken } from "@/lib/api";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,12 +41,21 @@ const Dashboard = () => {
     navigate("/login");
   };
 
-  const handleRemoveHistory = () => {
+  const handleRemoveHistory = async () => {
+    const token = getToken();
+    if (!token) return;
+
     setShowConfirmDelete(true);
-    // Implement actual deletion logic
-    setTimeout(() => {
+    try {
+      await clearAllHistory(token);
+      toast.success("All history and associated images removed successfully");
+      console.log("[DELETE] History cleared");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to remove history");
+      console.error("[DELETE] Error:", error);
+    } finally {
       setShowConfirmDelete(false);
-    }, 2000);
+    }
   };
 
   // Default user if not loaded
@@ -96,7 +106,7 @@ const Dashboard = () => {
             </div>
 
             {/* Tagline */}
-            <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
+            <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
               Unified Platform for Blood and Tissue Disease Diagnosis and Cell Morphology Analysis Using Microscopic Imaging
             </p>
 
@@ -104,7 +114,7 @@ const Dashboard = () => {
             <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent mb-10" />
 
             {/* Welcome Message */}
-            <p className="text-lg text-foreground mb-8">
+            <p className="text-xl md:text-2xl text-foreground mb-8">
               Welcome back, <span className="text-primary font-semibold">
                 {displayUser.full_name || displayUser.name || "User"}
               </span>

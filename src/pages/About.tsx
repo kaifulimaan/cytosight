@@ -29,7 +29,7 @@ const About = () => {
 
             {/* Description Text */}
             <div className="max-w-3xl mx-auto">
-              <h1 className="text-2xl md:text-3xl font-bold text-foreground leading-relaxed mb-6">
+              <h1 className="text-2xl md:text-3xl font-bold text-muted-foreground leading-relaxed mb-6">
                 Welcome to CytoSight: An Explainable Unified Framework for Heterogeneous Cellular Disease Diagnosis and unsupervised segmentation mask generation for blood smears
               </h1>
             </div>

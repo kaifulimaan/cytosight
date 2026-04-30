@@ -140,27 +140,13 @@ async def _download_from_supabase(file_path: str) -> bytes:
         )
 
 
-def _upload_to_storage(path: str, file_bytes: bytes, content_type: str, token: Optional[str] = None) -> None:
-    if token:
-        import httpx
-        url = f"{settings.supabase_url}/storage/v1/object/{IMAGES_BUCKET}/{path}"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "apikey": settings.supabase_key,
-            "Content-Type": content_type,
-            "x-upsert": "true"
-        }
-        resp = httpx.post(url, headers=headers, content=file_bytes)
-        if resp.status_code >= 400:
-            logger.error(f"Storage upload failed: {resp.status_code} {resp.text}")
-            resp.raise_for_status()
-    else:
-        supabase = get_supabase_client()
-        supabase.storage.from_(IMAGES_BUCKET).upload(
-            path=path,
-            file=file_bytes,
-            file_options={"content-type": content_type, "upsert": "true"},
-        )
+def _upload_to_storage(path: str, file_bytes: bytes, content_type: str) -> None:
+    supabase = get_supabase_client()
+    supabase.storage.from_(IMAGES_BUCKET).upload(
+        path=path,
+        file=file_bytes,
+        file_options={"content-type": content_type, "upsert": "true"},
+    )
 
 
 def _resolve_user_id(credentials: Optional[HTTPAuthorizationCredentials]) -> str:
@@ -191,7 +177,6 @@ async def predict_segmentation(
         )
 
     user_id = _resolve_user_id(credentials)
-    token = credentials.credentials if credentials else None
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     request_id = uuid4().hex
 
@@ -226,17 +211,17 @@ async def predict_segmentation(
         )
 
     if not original_path:
-        original_path = f"segmentations/{user_id}/originals/{timestamp}_{request_id}.png"
+        original_path = f"{user_id}/segmentations/originals/{timestamp}_{request_id}.png"
         original_png = io.BytesIO()
         image.save(original_png, format="PNG")
-        _upload_to_storage(original_path, original_png.getvalue(), "image/png", token)
+        _upload_to_storage(original_path, original_png.getvalue(), "image/png")
 
     pipeline = get_segmentation_pipeline()
     mask, metadata = pipeline.segment(image)
     mask_png_bytes = pipeline.mask_to_png_bytes(mask)
 
-    mask_path = f"segmentations/{user_id}/masks/{timestamp}_{request_id}_mask.png"
-    _upload_to_storage(mask_path, mask_png_bytes, "image/png", token)
+    mask_path = f"{user_id}/segmentations/masks/{timestamp}_{request_id}_mask.png"
+    _upload_to_storage(mask_path, mask_png_bytes, "image/png")
 
     original_url = _create_signed_url(original_path)
     mask_url = _create_signed_url(mask_path)
