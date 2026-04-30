@@ -123,7 +123,7 @@ async def signup(
             "last_sign_in_at": str(user.last_sign_in_at) if user.last_sign_in_at else None
         }
 
-        logger.info(f"[SIGNUP] ✅ User registered: {email}")
+        logger.info(f"[SIGNUP]  User registered: {email}")
 
         return TokenResponse(
             access_token=session.access_token,
@@ -209,7 +209,7 @@ async def login(
             "last_sign_in_at": str(user.last_sign_in_at) if user.last_sign_in_at else None
         }
         
-        logger.info(f"[LOGIN] ✅ Successful login for: {email}")
+        logger.info(f"[LOGIN]  Successful login for: {email}")
         
         return TokenResponse(
             access_token=session.access_token,

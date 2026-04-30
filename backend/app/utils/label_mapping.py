@@ -157,7 +157,7 @@ class LabelMapper:
         self.stage_labels = stage_labels or STAGE_LABELS
         
         logger.info(f"\n{'='*70}")
-        logger.info(f"📊 LABEL MAPPER INITIALIZATION:")
+        logger.info(f" LABEL MAPPER INITIALIZATION:")
         logger.info(f"   Disease names (in order): {self.disease_names}")
         logger.info(f"   Number of diseases: {len(self.disease_names)}")
         logger.info(f"{'='*70}\n")
@@ -183,7 +183,7 @@ class LabelMapper:
             Readable disease name
         """
         if disease_idx not in self.idx_to_disease_name:
-            logger.warning(f"⚠️  Unknown disease index: {disease_idx}")
+            logger.warning(f"  Unknown disease index: {disease_idx}")
             return f"Unknown Disease ({disease_idx})"
         
         disease_key = self.idx_to_disease_name[disease_idx]
@@ -196,7 +196,7 @@ class LabelMapper:
     def get_disease_info(self, disease_idx: int) -> dict:
        
         if disease_idx not in self.idx_to_disease_name:
-            logger.warning(f"⚠️  Unknown disease index: {disease_idx}")
+            logger.warning(f"  Unknown disease index: {disease_idx}")
             return {
                 "key": "unknown",
                 "name": f"Unknown Disease",
@@ -314,14 +314,14 @@ class LabelMapper:
         
         # Debug logging
         logger.info(f"\n{'='*70}")
-        logger.info(f"🗂️  LABEL MAPPING RESULT:")
-        logger.info(f"   Disease: idx={disease_idx} → {disease_info.get('name')}")
-        logger.info(f"   Severity: idx={severity_idx} → {severity_info.get('name')}")
+        logger.info(f"  LABEL MAPPING RESULT:")
+        logger.info(f"   Disease: idx={disease_idx}  {disease_info.get('name')}")
+        logger.info(f"   Severity: idx={severity_idx}  {severity_info.get('name')}")
         if stage_idx is not None:
             if stage_info:
-                logger.info(f"   Stage: idx={stage_idx} → {stage_info.get('name')}")
+                logger.info(f"   Stage: idx={stage_idx}  {stage_info.get('name')}")
             else:
-                logger.info(f"   Stage: idx={stage_idx} → NULL (not applicable for this disease)")
+                logger.info(f"   Stage: idx={stage_idx}  NULL (not applicable for this disease)")
         logger.info(f"{'='*70}\n")
         
         # Build result dict

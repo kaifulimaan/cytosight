@@ -64,27 +64,27 @@ class ViTBackbone(nn.Module):
             has_model = os.path.exists(os.path.join(local_model_dir, "model.safetensors"))
             
             if has_config and has_model:
-                logger.info(f"📂 Found complete local model at: {local_model_dir}")
-                logger.info(f"📥 Loading ViT backbone from local directory...")
+                logger.info(f" Found complete local model at: {local_model_dir}")
+                logger.info(f" Loading ViT backbone from local directory...")
                 try:
                     self.vit = AutoModel.from_pretrained(
                         local_model_dir,
                         trust_remote_code=True,
                         local_files_only=True  # Don't download
                     )
-                    logger.info(f"✅ ViT backbone loaded from LOCAL: {local_model_dir}")
+                    logger.info(f" ViT backbone loaded from LOCAL: {local_model_dir}")
                     self._loaded = True
                     return
                 except Exception as local_e:
-                    logger.warning(f"⚠️  Failed to load from local: {local_e}")
+                    logger.warning(f"  Failed to load from local: {local_e}")
             else:
                 if not has_config:
-                    logger.info(f"⚠️  Missing config.json in {local_model_dir}")
+                    logger.info(f"  Missing config.json in {local_model_dir}")
                 if not has_model:
-                    logger.info(f"⚠️  Missing model.safetensors in {local_model_dir}")
+                    logger.info(f"  Missing model.safetensors in {local_model_dir}")
             
             # Fallback to HuggingFace
-            logger.info(f"☁️  Downloading ViT backbone from HuggingFace: {HF_BACKBONE_REPO}")
+            logger.info(f"  Downloading ViT backbone from HuggingFace: {HF_BACKBONE_REPO}")
             
             self.vit = AutoModel.from_pretrained(
                 HF_BACKBONE_REPO,
@@ -92,10 +92,10 @@ class ViTBackbone(nn.Module):
                 local_files_only=False,  # Allow downloading
                 force_download=False  # Use cache if available
             )
-            logger.info(f"✅ ViT backbone loaded from HuggingFace: {HF_BACKBONE_REPO}")
+            logger.info(f" ViT backbone loaded from HuggingFace: {HF_BACKBONE_REPO}")
             self._loaded = True
         except Exception as e:
-            logger.error(f"❌ Failed to load ViT model: {e}")
+            logger.error(f" Failed to load ViT model: {e}")
             raise RuntimeError(
                 f"Cannot load ViT backbone. "
                 f"Tried: (1) Local directory at app/phikonv2/ (needs config.json + model.safetensors), "
@@ -333,24 +333,24 @@ class DiseaseModelWrapper:
             for path in local_checkpoint_paths:
                 if os.path.exists(path):
                     checkpoint_file = os.path.abspath(path)
-                    logger.info(f"📂 Found local checkpoint at: {checkpoint_file}")
-                    logger.info(f"📥 Loading model from LOCAL file...")
+                    logger.info(f" Found local checkpoint at: {checkpoint_file}")
+                    logger.info(f" Loading model from LOCAL file...")
                     break
             
             # If no local checkpoint, try downloading from HuggingFace
             if not checkpoint_file:
-                logger.info(f"⚠️  Local checkpoint not found in:")
+                logger.info(f"  Local checkpoint not found in:")
                 for path in local_checkpoint_paths:
                     logger.info(f"    - {path}")
-                logger.info(f"☁️  Attempting to download checkpoint from HuggingFace: {self.model_path}")
+                logger.info(f"  Attempting to download checkpoint from HuggingFace: {self.model_path}")
                 token = os.getenv("HF_TOKEN")
                 
                 if token:
-                    logger.info(f"✅ HF_TOKEN is set (length: {len(token)} chars)")
+                    logger.info(f" HF_TOKEN is set (length: {len(token)} chars)")
                 else:
-                    logger.warning(f"⚠️  HF_TOKEN is NOT set - will attempt anonymous access")
+                    logger.warning(f"  HF_TOKEN is NOT set - will attempt anonymous access")
                 
-                logger.info(f"📥 Calling hf_hub_download(repo_id='{self.model_path}', filename='{HF_CHECKPOINT_FILENAME}')")
+                logger.info(f" Calling hf_hub_download(repo_id='{self.model_path}', filename='{HF_CHECKPOINT_FILENAME}')")
 
                 try:
                     # Try standard hf_hub_download first
@@ -363,8 +363,8 @@ class DiseaseModelWrapper:
                         force_download=False
                     )
                 except Exception as e1:
-                    logger.warning(f"⚠️  Standard download failed: {e1}")
-                    logger.info("🔄 Attempting alternative download with force_download=True...")
+                    logger.warning(f"  Standard download failed: {e1}")
+                    logger.info(" Attempting alternative download with force_download=True...")
                     try:
                         checkpoint_file = hf_hub_download(
                             repo_id=self.model_path,
@@ -375,7 +375,7 @@ class DiseaseModelWrapper:
                             resume_download=True
                         )
                     except Exception as e2:
-                        logger.error(f"❌ Both download methods failed!")
+                        logger.error(f" Both download methods failed!")
                         logger.error(f"  Standard: {e1}")
                         logger.error(f"  Force: {e2}")
                         raise RuntimeError(
@@ -384,7 +384,7 @@ class DiseaseModelWrapper:
                             f"To fix: Place phase3_mil_best.pth in app/ml_models/ OR set HF_TOKEN for HuggingFace."
                         ) from e2
             
-            logger.info(f"✅ Checkpoint file ready: {checkpoint_file}")
+            logger.info(f" Checkpoint file ready: {checkpoint_file}")
             checkpoint = torch.load(checkpoint_file, map_location=self.device)
             
             state_dict = checkpoint['model_state_dict']
@@ -406,7 +406,7 @@ class DiseaseModelWrapper:
                         severity_head_names.add(parts[2])
             
             logger.info(f"\n{'='*70}")
-            logger.info(f"🔍 DISEASE NAME VALIDATION:")
+            logger.info(f" DISEASE NAME VALIDATION:")
             logger.info(f"   Expected (training order): {TRAINING_DISEASE_NAMES}")
             logger.info(f"   Found in checkpoint: {sorted(severity_head_names)}")
             logger.info(f"{'='*70}\n")
@@ -421,7 +421,7 @@ class DiseaseModelWrapper:
             
             # Use TRAINING order, NOT sorted order
             self.disease_names = TRAINING_DISEASE_NAMES
-            logger.info(f"✅ Using disease names in TRAINING order: {self.disease_names}")
+            logger.info(f" Using disease names in TRAINING order: {self.disease_names}")
             
             # Get number of diseases from disease head output shape
             self.num_diseases = state_dict['aggregator.disease_head.classifier.3.weight'].shape[0]
@@ -453,26 +453,26 @@ class DiseaseModelWrapper:
             # meaning the checkpoint contains backbone weights (which may be fine-tuned).
             # We must force the backbone to initialize its AutoModel before load_state_dict
             # so the backbone weights in the checkpoint are actually loaded instead of ignored.
-            logger.info("📥 Initializing ViT backbone before loading checkpoint...")
+            logger.info(" Initializing ViT backbone before loading checkpoint...")
             self.model.backbone._load_backbone()
             self.model.backbone = self.model.backbone.to(self.device)
             
             # Load weights
-            logger.info("📥 Loading model state_dict...")
+            logger.info(" Loading model state_dict...")
             result = self.model.load_state_dict(state_dict, strict=False)
             
             if result.missing_keys:
-                logger.warning(f"⚠️  Missing keys (will use default): {len(result.missing_keys)} keys")
+                logger.warning(f"  Missing keys (will use default): {len(result.missing_keys)} keys")
             if result.unexpected_keys:
-                logger.warning(f"⚠️  Unexpected keys (skipped from checkpoint): {len(result.unexpected_keys)} keys")
+                logger.warning(f"  Unexpected keys (skipped from checkpoint): {len(result.unexpected_keys)} keys")
                 logger.info("    This is OK - checkpoint has frozen backbone weights that we don't load")
             
             self.model.eval()
-            logger.info("✅ Model loaded successfully\n")
+            logger.info(" Model loaded successfully\n")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Failed to load model: {e}", exc_info=True)
+            logger.error(f" Failed to load model: {e}", exc_info=True)
             raise
     
     def predict(self, tiles: torch.Tensor) -> dict:

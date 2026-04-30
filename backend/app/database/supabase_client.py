@@ -10,18 +10,28 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Initialize Supabase client
+# Initialize Supabase clients
+# Global client (used for Auth/DB, may adopt user sessions)
 supabase: Client = create_client(settings.supabase_url, settings.supabase_service_key)
+
+# Dedicated storage client (never gets a user session, always stays in service_role mode)
+storage_client: Client = create_client(settings.supabase_url, settings.supabase_service_key)
 
 
 def get_supabase_client() -> Client:
     """
-    Get Supabase client instance.
-    
-    Returns:
-        Supabase client for database and storage operations
+    Get the primary Supabase client.
+    Note: This client may have a user session attached after auth calls.
     """
     return supabase
+
+
+def get_storage_client() -> Client:
+    """
+    Get the dedicated storage client.
+    This client is guaranteed to stay in service_role mode for bypassing RLS.
+    """
+    return storage_client
 
 
 # Storage bucket name for images

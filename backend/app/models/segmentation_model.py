@@ -195,12 +195,12 @@ class SegmentationPipeline:
         for path in local_paths:
             if os.path.exists(path):
                 checkpoint_file = os.path.abspath(path)
-                logger.info("[SEGMENTATION] 📂 Found local model at: %s", checkpoint_file)
+                logger.info("[SEGMENTATION]  Found local model at: %s", checkpoint_file)
                 break
         
         # 2. Fallback to HuggingFace
         if not checkpoint_file:
-            logger.info("[SEGMENTATION] ☁️ Local model not found, downloading from HuggingFace: %s", HF_SEGMENTATION_REPO)
+            logger.info("[SEGMENTATION]  Local model not found, downloading from HuggingFace: %s", HF_SEGMENTATION_REPO)
             token = os.getenv("HF_TOKEN")
             
             try:
@@ -210,9 +210,9 @@ class SegmentationPipeline:
                     token=token,
                     resume_download=True
                 )
-                logger.info("[SEGMENTATION] ✅ Downloaded from HuggingFace: %s", checkpoint_file)
+                logger.info("[SEGMENTATION]  Downloaded from HuggingFace: %s", checkpoint_file)
             except Exception as e:
-                logger.error("[SEGMENTATION] ❌ Failed to download from HuggingFace: %s", e)
+                logger.error("[SEGMENTATION]  Failed to download from HuggingFace: %s", e)
                 raise FileNotFoundError(
                     f"Segmentation model not found locally or on HuggingFace. "
                     f"Repo: {HF_SEGMENTATION_REPO} | Error: {e}"
@@ -225,7 +225,7 @@ class SegmentationPipeline:
 
         self.model.load_state_dict(cleaned, strict=False)
         self.model.eval()
-        logger.info("[SEGMENTATION] ✅ Model loaded successfully")
+        logger.info("[SEGMENTATION]  Model loaded successfully")
 
     @torch.inference_mode()
     def _reconstruct(self, image_tensor: torch.Tensor) -> torch.Tensor:

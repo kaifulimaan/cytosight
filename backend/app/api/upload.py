@@ -5,7 +5,7 @@ Handles image uploads to Supabase buckets.
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.database.supabase_client import get_supabase_client, IMAGES_BUCKET
+from app.database.supabase_client import get_supabase_client, get_storage_client, IMAGES_BUCKET
 from app.database.database import get_db
 from app.config import settings
 from pydantic import BaseModel
@@ -59,6 +59,7 @@ async def upload_image(
         HTTPException 500: If upload fails
     """
     supabase = get_supabase_client()
+    storage = get_storage_client()
     
     # Extract user ID from token (optional)
     user_id = None
@@ -70,23 +71,23 @@ async def upload_image(
             user_response = supabase.auth.get_user(token)
             if user_response and user_response.user:
                 user_id = user_response.user.id
-                logger.info(f"[UPLOAD] ✅ Authenticated user: {user_id}")
+                logger.info(f"[UPLOAD]  Authenticated user: {user_id}")
             else:
-                logger.warning(f"[UPLOAD] ⚠️ Token invalid, proceeding anonymously")
+                logger.warning(f"[UPLOAD]  Token invalid, proceeding anonymously")
         except Exception as auth_err:
-            logger.warning(f"[UPLOAD] ⚠️ Auth error: {auth_err}, proceeding anonymously")
+            logger.warning(f"[UPLOAD]  Auth error: {auth_err}, proceeding anonymously")
     
     # For unauthenticated uploads, use a session ID
     if not user_id:
         user_id = f"anonymous_{uuid.uuid4().hex[:16]}"
-        logger.info(f"[UPLOAD] 📝 Anonymous session: {user_id}")
+        logger.info(f"[UPLOAD]  Anonymous session: {user_id}")
     
     # Validate file type
     allowed_extensions = [".jpg", ".jpeg", ".png", ".tiff", ".tif", ".svs"]
     file_extension = file.filename.lower().split(".")[-1] if "." in file.filename else ""
     
     if f".{file_extension}" not in allowed_extensions:
-        logger.error(f"[UPLOAD] ❌ Invalid file type: .{file_extension}")
+        logger.error(f"[UPLOAD]  Invalid file type: .{file_extension}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
@@ -98,7 +99,7 @@ async def upload_image(
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         unique_filename = f"{user_id}/{timestamp}_{file_id}.{file_extension}"
         
-        logger.info(f"[UPLOAD] 📤 Starting upload")
+        logger.info(f"[UPLOAD]  Starting upload")
         logger.info(f"  Original filename: {file.filename}")
         logger.info(f"  Storage path: {unique_filename}")
         logger.info(f"  Content type: {file.content_type}")
@@ -108,8 +109,8 @@ async def upload_image(
         logger.info(f"  File size: {len(file_content)} bytes")
         
         # Upload to Supabase Storage
-        logger.info(f"[UPLOAD] 🚀 Uploading to Supabase...")
-        upload_response = supabase.storage.from_(IMAGES_BUCKET).upload(
+        logger.info(f"[UPLOAD]  Uploading to Supabase...")
+        upload_response = storage.storage.from_(IMAGES_BUCKET).upload(
             path=unique_filename,
             file=file_content,
             file_options={"content-type": file.content_type}
@@ -117,19 +118,19 @@ async def upload_image(
         logger.info(f"[UPLOAD] Upload response: {upload_response}")
         
         # Generate signed URL valid for 24 hours
-        logger.info(f"[UPLOAD] 🔗 Creating signed URL...")
+        logger.info(f"[UPLOAD]  Creating signed URL...")
         signed_url_response = None
         last_sign_error = None
         for attempt in range(3):
             try:
-                signed_url_response = supabase.storage.from_(IMAGES_BUCKET).create_signed_url(
+                signed_url_response = storage.storage.from_(IMAGES_BUCKET).create_signed_url(
                     path=unique_filename,
                     expires_in=86400  # 24 hours
                 )
                 break
             except Exception as sign_err:
                 last_sign_error = sign_err
-                logger.warning(f"[UPLOAD] ⚠️ Signed URL attempt {attempt + 1}/3 failed: {sign_err}")
+                logger.warning(f"[UPLOAD]  Signed URL attempt {attempt + 1}/3 failed: {sign_err}")
                 # Storage propagation can be eventually consistent right after upload.
                 await asyncio.sleep(0.6)
         
@@ -144,14 +145,14 @@ async def upload_image(
             # Fallback: public object URL. Works if bucket/object policy allows read access.
             signed_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/public/{IMAGES_BUCKET}/{unique_filename}"
             logger.warning(
-                f"[UPLOAD] ⚠️ Falling back to public URL after signed URL failure: {last_sign_error}"
+                f"[UPLOAD]  Falling back to public URL after signed URL failure: {last_sign_error}"
             )
 
         # Normalize to absolute URL if needed
         if signed_url.startswith("/"):
             signed_url = f"{settings.supabase_url.rstrip('/')}{signed_url}"
         
-        logger.info(f"[UPLOAD] ✅ Upload complete!")
+        logger.info(f"[UPLOAD]  Upload complete!")
         logger.info(f"  File ID: {file_id}")
         logger.info(f"  Signed URL: {signed_url[:80]}...")
         
@@ -166,7 +167,7 @@ async def upload_image(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[UPLOAD] ❌ Upload failed: {e}", exc_info=True)
+        logger.error(f"[UPLOAD]  Upload failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Upload failed: {str(e)}"
@@ -209,9 +210,10 @@ async def delete_image(
             )
 
         # Delete file
-        supabase.storage.from_(IMAGES_BUCKET).remove([file_path])
+        storage = get_storage_client()
+        storage.storage.from_(IMAGES_BUCKET).remove([file_path])
         
-        logger.info(f"[DELETE] ✅ File deleted: {file_path}")
+        logger.info(f"[DELETE]  File deleted: {file_path}")
 
         return {"message": "File deleted successfully", "file_path": file_path}
 

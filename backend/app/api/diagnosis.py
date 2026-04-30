@@ -25,7 +25,7 @@ from app.utils.preprocessing import ImagePreprocessor, load_image_from_bytes, ex
 from app.utils.label_mapping import get_label_mapper
 from app.database.models import Diagnosis, User
 from app.database.database import get_db
-from app.database.supabase_client import get_supabase_client, IMAGES_BUCKET
+from app.database.supabase_client import get_supabase_client, get_storage_client, IMAGES_BUCKET
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
@@ -148,7 +148,7 @@ class DiagnosisHistoryItem(BaseModel):
     confidence_stage: Optional[float] = None
     original_image_url: str
     created_at: str
-    status: str
+    status: str  # "normal" or "abnormal"
 
 
 class DiagnosisHistoryResponse(BaseModel):
@@ -244,7 +244,7 @@ def _to_history_image_url(url_or_path: str) -> str:
         return url_or_path
 
     try:
-        supabase = get_supabase_client()
+        supabase = get_storage_client()
         signed_url_response = supabase.storage.from_(IMAGES_BUCKET).create_signed_url(
             path=clean_path,
             expires_in=86400,  # 24 hours
@@ -261,13 +261,13 @@ def _to_history_image_url(url_or_path: str) -> str:
 
         return signed_url or url_or_path
     except Exception as err:
-        logger.warning(f"[HISTORY] ⚠️ Could not sign image path {clean_path}: {err}")
+        logger.warning(f"[HISTORY]  Could not sign image path {clean_path}: {err}")
         return url_or_path
 
 
-def _save_diagnosis_to_storage_history(user_id: str, payload: dict) -> Optional[str]:
-    """Last-resort persistence path using Supabase Storage JSON files."""
-    supabase = get_supabase_client()
+def _save_diagnosis_to_storage_history(user_id: str, payload: dict) -> str:
+    """Save diagnosis record to Storage as JSON for fallback history."""
+    supabase = get_storage_client()
     diagnosis_id = str(payload.get("id") or uuid4())
     created_at = payload.get("created_at") or datetime.utcnow().isoformat()
 
@@ -295,85 +295,71 @@ def _save_diagnosis_to_storage_history(user_id: str, payload: dict) -> Optional[
 
 def _load_diagnoses_from_storage_history(user_id: str) -> List[DiagnosisHistoryItem]:
     """Load user history from Storage JSON records."""
-    supabase = get_supabase_client()
+    supabase = get_storage_client()
     history_items: List[DiagnosisHistoryItem] = []
-    folder_path = f"history/{user_id}"
-
-    entries = supabase.storage.from_(IMAGES_BUCKET).list(path=folder_path)
-    if not isinstance(entries, list):
-        return history_items
-
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-
-        filename = entry.get("name") or ""
-        if not filename.endswith(".json"):
-            continue
-
-        record_path = f"{folder_path}/{filename}"
+    
+    # Check both new and old paths
+    # New: {user_id}/history_*.json
+    # Old: history/{user_id}/*.json
+    paths_to_check = [str(user_id), f"history/{user_id}"]
+    
+    for folder_path in paths_to_check:
         try:
-            raw_data = supabase.storage.from_(IMAGES_BUCKET).download(record_path)
-            if isinstance(raw_data, bytes):
-                data_str = raw_data.decode("utf-8")
-            else:
-                data_str = str(raw_data)
-            record = json.loads(data_str)
-            history_items.append(_build_history_item_from_dict(record))
-        except Exception as parse_err:
-            logger.warning(f"[HISTORY] ⚠️ Failed to parse storage record {record_path}: {parse_err}")
+            logger.info(f"[HISTORY] Listing folder: {folder_path}")
+            entries = supabase.storage.from_(IMAGES_BUCKET).list(path=folder_path)
+            if not isinstance(entries, list):
+                continue
 
-    history_items.sort(key=lambda item: item.created_at, reverse=True)
-    return history_items
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+
+                filename = entry.get("name") or ""
+                # Match history_*.json in user root or any .json in history/{user_id}
+                if folder_path == str(user_id):
+                    if not (filename.startswith("history_") and filename.endswith(".json")):
+                        continue
+                else:
+                    if not filename.endswith(".json"):
+                        continue
+
+                record_path = f"{folder_path}/{filename}"
+                try:
+                    raw_data = supabase.storage.from_(IMAGES_BUCKET).download(record_path)
+                    if isinstance(raw_data, bytes):
+                        data_str = raw_data.decode("utf-8")
+                    else:
+                        data_str = str(raw_data)
+                    record = json.loads(data_str)
+                    history_items.append(_build_history_item_from_dict(record))
+                except Exception as parse_err:
+                    logger.warning(f"[HISTORY]  Failed to parse record {record_path}: {parse_err}")
+        except Exception as list_err:
+            logger.warning(f"[HISTORY]  Failed to list folder {folder_path}: {list_err}")
+
+    # Deduplicate by ID
+    unique_history = {}
+    for item in history_items:
+        unique_history[item.diagnosis_id] = item
+        
+    final_list = list(unique_history.values())
+    final_list.sort(key=lambda x: x.created_at, reverse=True)
+    return final_list
 
 
 def _delete_diagnosis_from_storage_history(user_id: str, diagnosis_id: str) -> bool:
     """Delete a diagnosis JSON record and associated image from Storage fallback."""
-    supabase = get_supabase_client()
-    record_path = f"history/{user_id}/{diagnosis_id}.json"
+    supabase = get_storage_client()
+    
+    # Try both new and old locations
+    paths_to_check = [
+        f"{user_id}/history_{diagnosis_id}.json",
+        f"history/{user_id}/{diagnosis_id}.json"
+    ]
 
-    try:
-        raw_data = supabase.storage.from_(IMAGES_BUCKET).download(record_path)
-        if isinstance(raw_data, bytes):
-            data_str = raw_data.decode("utf-8")
-        else:
-            data_str = str(raw_data)
-        record = json.loads(data_str)
-
-        original_image_url = record.get("original_image_url") or ""
-        image_path = _extract_storage_object_path(original_image_url)
-        if image_path:
-            try:
-                supabase.storage.from_(IMAGES_BUCKET).remove([image_path])
-            except Exception as image_err:
-                logger.warning(f"[DELETE] ⚠️ Storage fallback image delete failed: {image_err}")
-
-        supabase.storage.from_(IMAGES_BUCKET).remove([record_path])
-        return True
-    except Exception as err:
-        logger.warning(f"[DELETE] ⚠️ Storage fallback record delete failed: {err}")
-        return False
-
-
-def _clear_storage_history(user_id: str) -> int:
-    """Clear all history JSON records (and associated images) for a user."""
-    supabase = get_supabase_client()
-    folder_path = f"history/{user_id}"
-    entries = supabase.storage.from_(IMAGES_BUCKET).list(path=folder_path)
-    if not isinstance(entries, list):
-        return 0
-
-    deleted_count = 0
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        filename = entry.get("name") or ""
-        if not filename.endswith(".json"):
-            continue
-
-        record_path = f"{folder_path}/{filename}"
+    for path in paths_to_check:
         try:
-            raw_data = supabase.storage.from_(IMAGES_BUCKET).download(record_path)
+            raw_data = supabase.storage.from_(IMAGES_BUCKET).download(path)
             if isinstance(raw_data, bytes):
                 data_str = raw_data.decode("utf-8")
             else:
@@ -386,14 +372,50 @@ def _clear_storage_history(user_id: str) -> int:
                 try:
                     supabase.storage.from_(IMAGES_BUCKET).remove([image_path])
                 except Exception as image_err:
-                    logger.warning(f"[CLEAR_ALL] ⚠️ Storage fallback image delete failed: {image_err}")
+                    logger.warning(f"[DELETE]  Storage fallback image delete failed: {image_err}")
 
-            supabase.storage.from_(IMAGES_BUCKET).remove([record_path])
-            deleted_count += 1
-        except Exception as record_err:
-            logger.warning(f"[CLEAR_ALL] ⚠️ Failed to clear storage record {record_path}: {record_err}")
+            supabase.storage.from_(IMAGES_BUCKET).remove([path])
+            return True
+        except Exception:
+            continue
+            
+    return False
 
-    return deleted_count
+
+def _clear_storage_history(user_id: str) -> int:
+    """Remove all history JSON files from storage for a user."""
+    supabase = get_storage_client()
+    count = 0
+    
+    # Check both new and old paths
+    paths_to_check = [str(user_id), f"history/{user_id}"]
+    
+    for folder_path in paths_to_check:
+        try:
+            entries = supabase.storage.from_(IMAGES_BUCKET).list(path=folder_path)
+            if not isinstance(entries, list):
+                continue
+
+            paths_to_remove = []
+            for entry in entries:
+                name = entry.get("name")
+                if not name:
+                    continue
+                
+                if folder_path == str(user_id):
+                    if name.startswith("history_") and name.endswith(".json"):
+                        paths_to_remove.append(f"{folder_path}/{name}")
+                else:
+                    if name.endswith(".json"):
+                        paths_to_remove.append(f"{folder_path}/{name}")
+
+            if paths_to_remove:
+                supabase.storage.from_(IMAGES_BUCKET).remove(paths_to_remove)
+                count += len(paths_to_remove)
+        except Exception as e:
+            logger.error(f"Error clearing storage history for {folder_path}: {e}")
+            
+    return count
 
 
 @router.post("/predict", response_model=DiagnosisResponse)
@@ -428,9 +450,9 @@ async def predict_diagnosis(
                 user_response = supabase.auth.get_user(token)
                 if user_response and user_response.user:
                     user_id = user_response.user.id
-                    logger.info(f"[DIAGNOSIS] ✅ Authenticated user: {user_id}")
+                    logger.info(f"[DIAGNOSIS]  Authenticated user: {user_id}")
             except Exception as auth_err:
-                logger.warning(f"[DIAGNOSIS] ⚠️ Authentication failed (continuing): {auth_err}")
+                logger.warning(f"[DIAGNOSIS]  Authentication failed (continuing): {auth_err}")
 
         # Lazy load model from app state or HuggingFace
         model = None
@@ -442,9 +464,9 @@ async def predict_diagnosis(
             try:
                 model = get_model()
                 request.app.state.model = model
-                logger.info("[DIAGNOSIS] ✅ Model loaded and cached")
+                logger.info("[DIAGNOSIS]  Model loaded and cached")
             except Exception as load_err:
-                logger.error(f"[DIAGNOSIS] ❌ Model loading failed: {load_err}", exc_info=True)
+                logger.error(f"[DIAGNOSIS]  Model loading failed: {load_err}", exc_info=True)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Model initialization failed: {str(load_err)}"
@@ -462,7 +484,7 @@ async def predict_diagnosis(
             try:
                 image_bytes = await download_from_supabase(req.image_file_path)
             except Exception as storage_err:
-                logger.warning(f"[DIAGNOSIS] ⚠️ Supabase storage download failed: {storage_err}")
+                logger.warning(f"[DIAGNOSIS]  Supabase storage download failed: {storage_err}")
                 # Fall back to URL if available
                 if req.image_url:
                     logger.info("[DIAGNOSIS] Falling back to image_url download")
@@ -487,7 +509,7 @@ async def predict_diagnosis(
                 detail="Failed to load image"
             )
 
-        # ✅ FIX: Extract multiple tiles matching Kaggle inference exactly
+        #  FIX: Extract multiple tiles matching Kaggle inference exactly
         logger.info("[DIAGNOSIS] Extracting tiles from image...")
         tiles = prepare_tiles(image_bytes, preprocessor)
         logger.info(f"[DIAGNOSIS] Prepared {tiles[0].shape[0]} tiles for inference")
@@ -496,7 +518,7 @@ async def predict_diagnosis(
         logger.info("[DIAGNOSIS] Running inference...")
         prediction = model.predict(tiles)
 
-        logger.info(f"[DIAGNOSIS] 🔬 Raw prediction:")
+        logger.info(f"[DIAGNOSIS]  Raw prediction:")
         logger.info(f"  Disease: {prediction['disease_name']} (conf: {prediction['disease_confidence']:.4f})")
         logger.info(f"  Severity: {prediction['severity_name']} (conf: {prediction['severity_confidence']:.4f})")
         logger.info(f"  Stage: {prediction['stage_name']}")
@@ -504,7 +526,7 @@ async def predict_diagnosis(
         # Map to readable labels
         mapped_prediction = mapper.map_prediction(prediction)
 
-        logger.info(f"[DIAGNOSIS] 📋 Mapped prediction:")
+        logger.info(f"[DIAGNOSIS]  Mapped prediction:")
         logger.info(f"  Disease: {mapped_prediction['disease']['name']}")
         logger.info(f"  Severity: {mapped_prediction['severity']['name']}")
         logger.info(f"  Diagnosis: {mapped_prediction['diagnosis']}")
@@ -521,7 +543,7 @@ async def predict_diagnosis(
         confidence_score = (disease["confidence"] + severity["confidence"]) / 2
 
         if diagnosis_status == "abnormal":
-            logger.warning(f"[DIAGNOSIS] ⚠️ Abnormal detected: {mapped_prediction['diagnosis']}")
+            logger.warning(f"[DIAGNOSIS]  Abnormal detected: {mapped_prediction['diagnosis']}")
 
         # Save to database if authenticated
         diagnosis_id = None
@@ -541,9 +563,9 @@ async def predict_diagnosis(
                 db.commit()
                 db.refresh(diagnosis_record)
                 diagnosis_id = str(diagnosis_record.id)
-                logger.info(f"[DIAGNOSIS] ✅ Saved to database: {diagnosis_id}")
+                logger.info(f"[DIAGNOSIS]  Saved to database: {diagnosis_id}")
             except Exception as db_err:
-                logger.warning(f"[DIAGNOSIS] ⚠️ SQL save failed, trying Supabase REST fallback: {db_err}")
+                logger.warning(f"[DIAGNOSIS]  SQL save failed, trying Supabase REST fallback: {db_err}")
                 db.rollback()
                 fallback_payload = {
                     "user_id": user_id,
@@ -561,18 +583,18 @@ async def predict_diagnosis(
                         payload=fallback_payload,
                     )
                     if diagnosis_id:
-                        logger.info(f"[DIAGNOSIS] ✅ Saved via Supabase REST fallback: {diagnosis_id}")
+                        logger.info(f"[DIAGNOSIS]  Saved via Supabase REST fallback: {diagnosis_id}")
                 except Exception as supa_err:
-                    logger.warning(f"[DIAGNOSIS] ⚠️ Supabase REST fallback failed, trying Storage fallback: {supa_err}")
+                    logger.warning(f"[DIAGNOSIS]  Supabase REST fallback failed, trying Storage fallback: {supa_err}")
                     try:
                         diagnosis_id = _save_diagnosis_to_storage_history(
                             user_id=user_id,
                             payload=fallback_payload,
                         )
                         if diagnosis_id:
-                            logger.info(f"[DIAGNOSIS] ✅ Saved via Storage fallback: {diagnosis_id}")
+                            logger.info(f"[DIAGNOSIS]  Saved via Storage fallback: {diagnosis_id}")
                     except Exception as storage_err:
-                        logger.warning(f"[DIAGNOSIS] ⚠️ Storage fallback also failed: {storage_err}")
+                        logger.warning(f"[DIAGNOSIS]  Storage fallback also failed: {storage_err}")
 
         response = DiagnosisResponse(
             disease=DiseaseInfo(**disease),
@@ -585,13 +607,13 @@ async def predict_diagnosis(
             diagnosis_id=diagnosis_id
         )
 
-        logger.info(f"[DIAGNOSIS] ✅ Diagnosis complete: {response.diagnosis}")
+        logger.info(f"[DIAGNOSIS]  Diagnosis complete: {response.diagnosis}")
         return response
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[DIAGNOSIS] ❌ Prediction error: {e}", exc_info=True)
+        logger.error(f"[DIAGNOSIS]  Prediction error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Diagnosis failed: {str(e)}"
@@ -621,9 +643,9 @@ async def batch_predict_diagnosis(
             try:
                 model = get_model()
                 request.app.state.model = model
-                logger.info("[BATCH] ✅ Model loaded")
+                logger.info("[BATCH]  Model loaded")
             except Exception as load_err:
-                logger.error(f"[BATCH] ❌ Model loading failed: {load_err}")
+                logger.error(f"[BATCH]  Model loading failed: {load_err}")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Model initialization failed: {str(load_err)}"
@@ -641,7 +663,7 @@ async def batch_predict_diagnosis(
                 # Read file
                 image_bytes = await file.read()
 
-                # ✅ FIX: Extract multiple tiles matching Kaggle inference exactly
+                #  FIX: Extract multiple tiles matching Kaggle inference exactly
                 tiles = prepare_tiles(image_bytes, preprocessor)
                 logger.info(f"[BATCH] Prepared {tiles[0].shape[0]} tiles for {file.filename}")
 
@@ -656,7 +678,7 @@ async def batch_predict_diagnosis(
                 diagnosis_status = "abnormal" if severity["level"] == 1 else "normal"
 
                 if diagnosis_status == "abnormal":
-                    logger.warning(f"[BATCH] ⚠️ Abnormal in {file.filename}")
+                    logger.warning(f"[BATCH]  Abnormal in {file.filename}")
 
                 result = {
                     "filename": file.filename,
@@ -671,13 +693,13 @@ async def batch_predict_diagnosis(
                 results.append(result)
 
             except Exception as e:
-                logger.warning(f"[BATCH] ⚠️ Failed for {file.filename}: {e}")
+                logger.warning(f"[BATCH]  Failed for {file.filename}: {e}")
                 results.append({
                     "filename": file.filename,
                     "error": str(e)
                 })
 
-        logger.info(f"[BATCH] ✅ Batch complete: {len(results)} results")
+        logger.info(f"[BATCH]  Batch complete: {len(results)} results")
         return {
             "results": results,
             "total": len(files),
@@ -687,7 +709,7 @@ async def batch_predict_diagnosis(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[BATCH] ❌ Batch error: {e}", exc_info=True)
+        logger.error(f"[BATCH]  Batch error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Batch diagnosis failed: {str(e)}"
@@ -717,9 +739,9 @@ async def upload_and_predict_diagnosis(
             try:
                 model = get_model()
                 request.app.state.model = model
-                logger.info("[UPLOAD_PREDICT] ✅ Model loaded")
+                logger.info("[UPLOAD_PREDICT]  Model loaded")
             except Exception as load_err:
-                logger.error(f"[UPLOAD_PREDICT] ❌ Model loading failed: {load_err}")
+                logger.error(f"[UPLOAD_PREDICT]  Model loading failed: {load_err}")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Model initialization failed: {str(load_err)}"
@@ -731,7 +753,7 @@ async def upload_and_predict_diagnosis(
         # Read uploaded file
         image_bytes = await file.read()
 
-        # ✅ FIX: Extract multiple tiles matching Kaggle inference exactly
+        #  FIX: Extract multiple tiles matching Kaggle inference exactly
         logger.info("[UPLOAD_PREDICT] Extracting tiles from image...")
         tiles = prepare_tiles(image_bytes, preprocessor)
         logger.info(f"[UPLOAD_PREDICT] Prepared {tiles[0].shape[0]} tiles for inference")
@@ -752,7 +774,7 @@ async def upload_and_predict_diagnosis(
         confidence_score = (disease["confidence"] + severity["confidence"]) / 2
 
         if diagnosis_status == "abnormal":
-            logger.warning(f"[UPLOAD_PREDICT] ⚠️ Abnormal: {mapped_prediction['diagnosis']}")
+            logger.warning(f"[UPLOAD_PREDICT]  Abnormal: {mapped_prediction['diagnosis']}")
 
         response = DiagnosisResponse(
             disease=DiseaseInfo(**disease),
@@ -764,13 +786,13 @@ async def upload_and_predict_diagnosis(
             confidence_score=confidence_score
         )
 
-        logger.info(f"[UPLOAD_PREDICT] ✅ Complete: {response.diagnosis}")
+        logger.info(f"[UPLOAD_PREDICT]  Complete: {response.diagnosis}")
         return response
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[UPLOAD_PREDICT] ❌ Error: {e}", exc_info=True)
+        logger.error(f"[UPLOAD_PREDICT]  Error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Diagnosis failed: {str(e)}"
@@ -793,15 +815,15 @@ async def diagnosis_health(request: Request):
             try:
                 model = get_model()
                 request.app.state.model = model
-                logger.info("[HEALTH] ✅ Model loaded")
+                logger.info("[HEALTH]  Model loaded")
             except Exception as e:
-                logger.error(f"[HEALTH] ❌ Model loading failed: {e}")
+                logger.error(f"[HEALTH]  Model loading failed: {e}")
                 return {
                     "status": "unhealthy",
                     "detail": f"Model initialization failed: {str(e)}"
                 }
 
-        logger.info("[HEALTH] ✅ Service healthy")
+        logger.info("[HEALTH]  Service healthy")
         return {
             "status": "healthy",
             "model": "phase3_mil",
@@ -813,7 +835,7 @@ async def diagnosis_health(request: Request):
         }
 
     except Exception as e:
-        logger.error(f"[HEALTH] ❌ Health check error: {e}")
+        logger.error(f"[HEALTH]  Health check error: {e}")
         return {
             "status": "unhealthy",
             "detail": f"Error: {str(e)}"
@@ -848,7 +870,7 @@ async def get_diagnosis_history(
                 )
             user_id = user_response.user.id
         except Exception as auth_err:
-            logger.error(f"[HISTORY] ❌ Auth error: {auth_err}")
+            logger.error(f"[HISTORY]  Auth error: {auth_err}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token"
@@ -865,7 +887,7 @@ async def get_diagnosis_history(
             ).order_by(Diagnosis.created_at.desc()).all()
             history_items = [_build_history_item_from_record(diagnosis) for diagnosis in diagnoses]
         except Exception as db_err:
-            logger.warning(f"[HISTORY] ⚠️ SQL history query failed: {db_err}")
+            logger.warning(f"[HISTORY]  SQL history query failed: {db_err}")
             
         if not history_items:
             try:
@@ -876,16 +898,16 @@ async def get_diagnosis_history(
                 rows = getattr(supabase_rows, "data", None) or []
                 history_items = [_build_history_item_from_dict(row) for row in rows]
             except Exception as rest_err:
-                logger.warning(f"[HISTORY] ⚠️ Supabase REST history fallback failed: {rest_err}")
+                logger.warning(f"[HISTORY]  Supabase REST history fallback failed: {rest_err}")
 
         if not history_items:
             try:
                 # Fallback path 2: Storage
                 history_items = _load_diagnoses_from_storage_history(str(user_id))
             except Exception as storage_err:
-                logger.warning(f"[HISTORY] ⚠️ Storage history fallback failed: {storage_err}")
+                logger.warning(f"[HISTORY]  Storage history fallback failed: {storage_err}")
 
-        logger.info(f"[HISTORY] ✅ Retrieved {len(history_items)} diagnoses")
+        logger.info(f"[HISTORY]  Retrieved {len(history_items)} diagnoses")
 
         return DiagnosisHistoryResponse(
             total_diagnoses=len(history_items),
@@ -895,7 +917,7 @@ async def get_diagnosis_history(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[HISTORY] ❌ Error: {e}", exc_info=True)
+        logger.error(f"[HISTORY]  Error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve history: {str(e)}"
@@ -927,7 +949,7 @@ async def delete_diagnosis(
                 )
             user_id = user_response.user.id
         except Exception as auth_err:
-            logger.error(f"[DELETE] ❌ Auth error: {auth_err}")
+            logger.error(f"[DELETE]  Auth error: {auth_err}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token"
@@ -965,9 +987,9 @@ async def delete_diagnosis(
 
                     if file_path:
                         supabase.storage.from_(IMAGES_BUCKET).remove([file_path])
-                        logger.info(f"[DELETE] ✅ Deleted image: {file_path}")
+                        logger.info(f"[DELETE]  Deleted image: {file_path}")
                 except Exception as del_err:
-                    logger.warning(f"[DELETE] ⚠️ Failed to delete image: {del_err}")
+                    logger.warning(f"[DELETE]  Failed to delete image: {del_err}")
 
             db.delete(diagnosis)
             db.commit()
@@ -975,7 +997,7 @@ async def delete_diagnosis(
         except HTTPException:
             raise
         except Exception as db_err:
-            logger.warning(f"[DELETE] ⚠️ SQL delete failed, trying Supabase REST fallback: {db_err}")
+            logger.warning(f"[DELETE]  SQL delete failed, trying Supabase REST fallback: {db_err}")
             db.rollback()
             try:
                 # Fallback path 1: Supabase REST table
@@ -1001,14 +1023,14 @@ async def delete_diagnosis(
                         if file_path:
                             supabase.storage.from_(IMAGES_BUCKET).remove([file_path])
                     except Exception as del_err:
-                        logger.warning(f"[DELETE] ⚠️ Fallback image delete failed: {del_err}")
+                        logger.warning(f"[DELETE]  Fallback image delete failed: {del_err}")
 
                 supabase.table("diagnoses").delete().eq("id", diagnosis_id).eq("user_id", user_id).execute()
                 deleted = True
             except HTTPException:
                 raise
             except Exception as rest_err:
-                logger.warning(f"[DELETE] ⚠️ Supabase REST delete fallback failed, trying Storage fallback: {rest_err}")
+                logger.warning(f"[DELETE]  Supabase REST delete fallback failed, trying Storage fallback: {rest_err}")
                 deleted = _delete_diagnosis_from_storage_history(str(user_id), diagnosis_id)
                 if not deleted:
                     raise HTTPException(
@@ -1022,7 +1044,7 @@ async def delete_diagnosis(
                 detail="Diagnosis delete did not complete"
             )
 
-        logger.info(f"[DELETE] ✅ Diagnosis deleted: {diagnosis_id}")
+        logger.info(f"[DELETE]  Diagnosis deleted: {diagnosis_id}")
 
         return {
             "success": True,
@@ -1033,7 +1055,7 @@ async def delete_diagnosis(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[DELETE] ❌ Error: {e}", exc_info=True)
+        logger.error(f"[DELETE]  Error: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1048,7 +1070,7 @@ async def clear_all_history(
 ):
     """
     Delete ALL diagnoses for the user.
-    ⚠️ WARNING: This is irreversible!
+     WARNING: This is irreversible!
     """
     try:
         logger.warning("[CLEAR_ALL] Clearing ALL diagnosis history")
@@ -1066,7 +1088,7 @@ async def clear_all_history(
                 )
             user_id = user_response.user.id
         except Exception as auth_err:
-            logger.error(f"[CLEAR_ALL] ❌ Auth error: {auth_err}")
+            logger.error(f"[CLEAR_ALL]  Auth error: {auth_err}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token"
@@ -1094,14 +1116,14 @@ async def clear_all_history(
                         if file_path:
                             supabase.storage.from_(IMAGES_BUCKET).remove([file_path])
                 except Exception as del_err:
-                    logger.warning(f"[CLEAR_ALL] ⚠️ Error deleting image: {del_err}")
+                    logger.warning(f"[CLEAR_ALL]  Error deleting image: {del_err}")
 
             delete_count = db.query(Diagnosis).filter(
                 Diagnosis.user_id == user_id
             ).delete()
             db.commit()
         except Exception as db_err:
-            logger.warning(f"[CLEAR_ALL] ⚠️ SQL clear failed, trying Supabase REST fallback: {db_err}")
+            logger.warning(f"[CLEAR_ALL]  SQL clear failed, trying Supabase REST fallback: {db_err}")
             db.rollback()
             try:
                 fallback_rows_resp = supabase.table("diagnoses").select("id,original_image_url").eq("user_id", user_id).execute()
@@ -1116,15 +1138,15 @@ async def clear_all_history(
                         if file_path:
                             supabase.storage.from_(IMAGES_BUCKET).remove([file_path])
                     except Exception as del_err:
-                        logger.warning(f"[CLEAR_ALL] ⚠️ Fallback image delete error: {del_err}")
+                        logger.warning(f"[CLEAR_ALL]  Fallback image delete error: {del_err}")
 
                 supabase.table("diagnoses").delete().eq("user_id", user_id).execute()
                 delete_count = len(fallback_rows)
             except Exception as rest_err:
-                logger.warning(f"[CLEAR_ALL] ⚠️ Supabase REST clear fallback failed, trying Storage fallback: {rest_err}")
+                logger.warning(f"[CLEAR_ALL]  Supabase REST clear fallback failed, trying Storage fallback: {rest_err}")
                 delete_count = _clear_storage_history(str(user_id))
 
-        logger.warning(f"[CLEAR_ALL] ✅ Deleted {delete_count} diagnoses")
+        logger.warning(f"[CLEAR_ALL]  Deleted {delete_count} diagnoses")
 
         return {
             "success": True,
@@ -1135,7 +1157,7 @@ async def clear_all_history(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[CLEAR_ALL] ❌ Error: {e}", exc_info=True)
+        logger.error(f"[CLEAR_ALL]  Error: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1164,7 +1186,7 @@ async def download_from_supabase(file_path: str) -> bytes:
             async with httpx.AsyncClient() as client:
                 response = await client.get(file_path, timeout=30.0, follow_redirects=True)
                 if response.status_code == 200:
-                    logger.info(f"[SUPABASE_DL] ✅ Downloaded {len(response.content)} bytes")
+                    logger.info(f"[SUPABASE_DL]  Downloaded {len(response.content)} bytes")
                     return response.content
                 else:
                     raise HTTPException(
@@ -1172,7 +1194,7 @@ async def download_from_supabase(file_path: str) -> bytes:
                         detail=f"URL returned status {response.status_code}"
                     )
 
-        # If it's a path, use Supabase library with robust normalization.
+        # If it's a path, use Supabase library
         clean_path = _extract_storage_object_path(file_path)
         if not clean_path:
             raise HTTPException(
@@ -1182,18 +1204,18 @@ async def download_from_supabase(file_path: str) -> bytes:
 
         logger.info(f"[SUPABASE_DL] Using path: {clean_path}")
 
-        supabase = get_supabase_client()
+        supabase = get_storage_client()
         last_err = None
         for attempt in range(3):
             try:
                 data = supabase.storage.from_(IMAGES_BUCKET).download(clean_path)
-                logger.info(f"[SUPABASE_DL] ✅ Downloaded {len(data)} bytes")
+                logger.info(f"[SUPABASE_DL]  Downloaded {len(data)} bytes")
                 return data
             except Exception as err:
                 last_err = err
                 # Newly uploaded objects can be briefly unavailable due to propagation.
                 logger.warning(
-                    f"[SUPABASE_DL] ⚠️ Download attempt {attempt + 1}/3 failed for {clean_path}: {err}"
+                    f"[SUPABASE_DL]  Download attempt {attempt + 1}/3 failed for {clean_path}: {err}"
                 )
                 if attempt < 2:
                     await asyncio.sleep(1.0 * (attempt + 1))
@@ -1203,7 +1225,7 @@ async def download_from_supabase(file_path: str) -> bytes:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[SUPABASE_DL] ❌ Error: {e}", exc_info=True)
+        logger.error(f"[SUPABASE_DL]  Error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Could not download image from Supabase: {str(e)}"
@@ -1232,13 +1254,13 @@ async def download_from_url(url: str) -> bytes:
                     detail=f"Could not download image (status {response.status_code})"
                 )
 
-            logger.info(f"[URL_DL] ✅ Downloaded {len(response.content)} bytes")
+            logger.info(f"[URL_DL]  Downloaded {len(response.content)} bytes")
             return response.content
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[URL_DL] ❌ Error: {e}", exc_info=True)
+        logger.error(f"[URL_DL]  Error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error connecting to image URL: {str(e)}"

@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from PIL import Image
 
 from app.config import settings
-from app.database.supabase_client import IMAGES_BUCKET, get_supabase_client
+from app.database.supabase_client import IMAGES_BUCKET, get_supabase_client, get_storage_client
 from app.models.segmentation_model import get_segmentation_pipeline
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ def _extract_storage_object_path(url_or_path: str) -> str:
 
 
 def _create_signed_url(path: str, expires_in_seconds: int = 86400) -> str:
-    supabase = get_supabase_client()
+    supabase = get_storage_client()
     signed = supabase.storage.from_(IMAGES_BUCKET).create_signed_url(path=path, expires_in=expires_in_seconds)
 
     if isinstance(signed, dict):
@@ -114,7 +114,7 @@ async def _download_from_supabase(file_path: str) -> bytes:
                 detail="Invalid Supabase file path",
             )
 
-        supabase = get_supabase_client()
+        supabase = get_storage_client()
         last_err = None
         for attempt in range(3):
             try:
@@ -141,7 +141,7 @@ async def _download_from_supabase(file_path: str) -> bytes:
 
 
 def _upload_to_storage(path: str, file_bytes: bytes, content_type: str) -> None:
-    supabase = get_supabase_client()
+    supabase = get_storage_client()
     supabase.storage.from_(IMAGES_BUCKET).upload(
         path=path,
         file=file_bytes,
