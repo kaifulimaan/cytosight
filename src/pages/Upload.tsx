@@ -6,6 +6,7 @@ import CellularBackground from "@/components/CellularBackground";
 import CytoSightLogo from "@/components/CytoSightLogo";
 import GlassCard from "@/components/GlassCard";
 import MedicalButton from "@/components/MedicalButton";
+import ProcessingOverlay from "@/components/ProcessingOverlay";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
@@ -196,6 +197,14 @@ const UploadScreen = () => {
 
   return (
     <CellularBackground>
+      <ProcessingOverlay 
+        isOpen={isLoadingDiagnosis} 
+        type="diagnosis" 
+      />
+      <ProcessingOverlay 
+        isOpen={isLoadingSegmentation} 
+        type="segmentation" 
+      />
       <div className="min-h-screen flex flex-col">
         {/* Header */}
         <header className="p-4 flex items-center">
