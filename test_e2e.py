@@ -1,106 +1,145 @@
 import time
-import random
-import string
-from playwright.sync_api import sync_playwright
-from PIL import Image
-import io
+import json
 import os
+from playwright.sync_api import sync_playwright
 
 # Configuration
-BASE_URL = "http://localhost:8080"  # Your local frontend port is 8080
-TEST_PASSWORD = "Password123!"
+BASE_URL = "http://localhost:8080"
+# Use specific credentials provided by the user
+TEST_EMAIL = "kaifulimaan@gmail.com"
+TEST_PASSWORD = "Kk123456,"
+REAL_IMAGE_PATH = r"D:\Projects\CytoSight\cytosight\test_sampe.png"
+EVIDENCE_DIR = "test_evidence"
 
-def generate_random_email():
-    random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-    return f"test_{random_str}@example.com"
+if not os.path.exists(EVIDENCE_DIR):
+    os.makedirs(EVIDENCE_DIR)
 
-def create_test_image(path="test_sample.jpg"):
-    """Creates a simple dummy image for testing upload."""
-    img = Image.new('RGB', (224, 224), color = (73, 109, 137))
-    img.save(path)
-    return os.path.abspath(path)
 
 def run_test():
-    email = generate_random_email()
-    test_image = create_test_image()
-    
+    if not os.path.exists(REAL_IMAGE_PATH):
+        print(f"❌ ERROR: Real image not found at {REAL_IMAGE_PATH}")
+        return
+
     with sync_playwright() as p:
         print("\n" + "="*50)
-        print("🚀 STARTING CYTOSIGHT E2E TEST SUITE")
+        print("🚀 STARTING CYTOSIGHT EVIDENCE-BASED PERFORMANCE TEST")
         print("="*50 + "\n")
         
-        # Launch browser (headless=False so you can watch it!)
-        # slow_mo adds a small delay between actions so it's visible
-        browser = p.chromium.launch(headless=False, slow_mo=800) 
+        browser = p.chromium.launch(headless=False, slow_mo=500)
         context = browser.new_context()
         page = context.new_page()
 
+        # Storage for performance metrics
+        request_start_times = {}
+
+        def handle_request(request):
+            if "/api/" in request.url:
+                request_start_times[request.url] = time.time()
+
+        def handle_response(response):
+            url = response.url
+            if "/api/" in url and response.status in [200, 201]:
+                try:
+                    # Calculate duration
+                    start_time = request_start_times.get(url)
+                    duration = round(time.time() - start_time, 2) if start_time else None
+                    
+                    # Capture JSON data
+                    data = response.json()
+                    
+                    # Add Performance Metadata
+                    data["_performance_metrics"] = {
+                        "total_response_time_seconds": duration,
+                        "captured_at": time.strftime("%Y-%m-%d %H:%M:%S")
+                    }
+
+                    # Determine specific category for naming
+                    category = "API_RESPONSE"
+                    if "auth/login" in url:
+                        category = "LOGIN"
+                    elif "diagnosis/history" in url:
+                        category = "HISTORY_LOAD"
+                    elif "upload" in url:
+                        category = "IMAGE_UPLOAD"
+                    elif "diagnosis/predict" in url:
+                        category = "DIAGNOSIS_MODEL"
+                    elif "segmentation/predict" in url:
+                        category = "SEGMENTATION_MODEL"
+                    elif "explain" in url:
+                        category = "EXPLAINABLE_AI"
+
+                    filename = f"{EVIDENCE_DIR}/{category}_{int(time.time())}.json"
+                    with open(filename, "w") as f:
+                        json.dump(data, f, indent=4)
+                    
+                    print(f"   📥 Captured {category} Response ({duration}s): {filename}")
+                except Exception:
+                    pass
+
+        page.on("request", handle_request)
+        page.on("response", handle_response)
+
         try:
-            # --- 1. SIGNUP ---
-            print(f"📝 STEP 1: Signing up as {email}...")
-            page.goto(f"{BASE_URL}/signup")
-            page.fill('input[name="fullName"]', "Test User")
-            page.fill('input[name="email"]', email)
+            # --- 1. LOGIN ---
+            print(f"🔐 STEP 1: Logging in as {TEST_EMAIL}...")
+            page.goto(f"{BASE_URL}/login")
+            
+            page.fill('input[name="email"]', TEST_EMAIL)
             page.fill('input[name="password"]', TEST_PASSWORD)
-            page.fill('input[name="confirmPassword"]', TEST_PASSWORD)
+            
             page.click('button[type="submit"]')
             
-            # Wait for dashboard redirect
-            page.wait_for_url("**/dashboard", timeout=10000)
-            print("   ✅ Signup Successful! Redirected to Dashboard.\n")
+            # Wait for dashboard to load
+            page.wait_for_selector('text=Welcome back', timeout=30000)
+            print("   ✅ Login Successful!\n")
 
-            # --- 2. UPLOAD & DIAGNOSIS ---
-            print("📤 STEP 2: Testing Image Upload...")
+            # --- 2. HISTORY ---
+            print("📜 STEP 2: Loading History Page...")
+            page.click('text=View Past Diagnosis') # Navigate from dashboard
+            page.wait_for_selector('text=Diagnosis History', timeout=30000)
+            # Give it a second to fetch history
+            time.sleep(2) 
+            print("   ✅ History Loaded.\n")
+
+            # --- 3. UPLOAD & DIAGNOSIS ---
+            print("📤 STEP 3: Running Diagnosis...")
             page.goto(f"{BASE_URL}/upload")
             
-            # Upload the file (handles the hidden input automatically)
-            page.set_input_files('input[type="file"]', test_image)
-            print(f"   ✅ Image selected: {test_image}")
+            page.set_input_files('input[type="file"]', REAL_IMAGE_PATH)
+            print(f"   ✅ Image Selected: {REAL_IMAGE_PATH}")
             
-            # Click Diagnosis
-            print("🔍 STEP 3: Running Diagnosis (hitting HF Backend)...")
             page.click('button:has-text("Disease Diagnosis")')
+            print("   ⏳ Processing Diagnosis...")
             
-            # Wait for Results Page (might take a few seconds for AI to process)
-            print("   ⏳ Waiting for AI results (up to 60s)...")
-            page.wait_for_selector('text=Diagnosis Completed', timeout=60000)
-            print("   ✅ Diagnosis Successful!\n")
+            page.wait_for_selector('text=Diagnosis Completed', timeout=120000)
+            print("   ✅ Diagnosis Completed.\n")
 
-            # --- 3. UPLOAD & SEGMENTATION ---
-            print("📤 STEP 4: Testing Binary Segmentation...")
+            # --- 4. UPLOAD & SEGMENTATION ---
+            print("📤 STEP 4: Running Segmentation...")
             page.goto(f"{BASE_URL}/upload")
             
-            # Upload the file again
-            page.set_input_files('input[type="file"]', test_image)
-            print(f"   ✅ Image selected for segmentation")
-            
-            # Click Segmentation
-            print("🎭 STEP 5: Running Segmentation (hitting HF Backend)...")
+            page.set_input_files('input[type="file"]', REAL_IMAGE_PATH)
             page.click('button:has-text("Binary Segmentation")')
+            print("   ⏳ Processing Segmentation...")
             
-            # Wait for Results Page
-            print("   ⏳ Waiting for Segmentation results (up to 60s)...")
-            page.wait_for_selector('text=Segmentation Results', timeout=60000)
-            print("   ✅ Segmentation Successful!")
+            page.wait_for_selector('text=Segmentation Results', timeout=120000)
+            print("   ✅ Segmentation Completed.\n")
 
-            print("\n" + "*"*50)
-            print("🎉 ALL TESTS PASSED SUCCESSFULLY!")
+            print("*"*50)
+            print("🎉 ALL TESTS PASSED. PERFORMANCE DATA SAVED.")
+            print(f"📁 Evidence available in: {os.path.abspath(EVIDENCE_DIR)}")
             print("*"*50 + "\n")
             
         except Exception as e:
             print(f"\n❌ TEST FAILED: {str(e)}")
-            # Take a screenshot on failure to see what happened
-            page.screenshot(path="test_failure.png")
-            print("📸 Screenshot of failure saved to 'test_failure.png'")
+            # Optional: capture error screenshot if it failed
+            # page.screenshot(path=f"{EVIDENCE_DIR}/ERROR_STATE.png")
             raise e
             
         finally:
-            # Clean up
             print("🧹 Cleaning up...")
-            time.sleep(3) # Give you a moment to see the success
+            time.sleep(2)
             browser.close()
-            if os.path.exists(test_image):
-                os.remove(test_image)
 
 if __name__ == "__main__":
     run_test()

@@ -39,3 +39,8 @@ Thumbs.db
 .project
 .pydevproject
 .settings/
+
+# Testing & Artifacts
+test_evidence/
+tmpclaude-*
+
