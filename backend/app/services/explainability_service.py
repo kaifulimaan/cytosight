@@ -430,9 +430,9 @@ class HeatmapFeatureExtractor:
                 
         return {'overlay_with_bbox': overlay}
 
-    def get_highest_attention_crop(self, threshold=0.6):
+    def get_highest_attention_crop(self, threshold_ratio=0.6):
         heatmap_norm = (self.heatmap - self.heatmap.min()) / (self.heatmap.max() - self.heatmap.min() + 1e-6)
-        mask = (heatmap_norm >= threshold).astype(np.uint8) * 255
+        mask = (heatmap_norm >= threshold_ratio).astype(np.uint8) * 255
         
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
