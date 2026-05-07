@@ -8,7 +8,7 @@ import GlassCard from "@/components/GlassCard";
 import MedicalButton from "@/components/MedicalButton";
 import ProcessingOverlay from "@/components/ProcessingOverlay";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const UploadScreen = () => {
   const navigate = useNavigate();
@@ -31,7 +31,7 @@ const UploadScreen = () => {
 
   const validateFile = (file: File): string | null => {
     if (file.size > MAX_FILE_SIZE) {
-      return `File size exceeds 5MB limit. Current size: ${(file.size / 1024 / 1024).toFixed(2)}MB`;
+      return `File size exceeds 10MB limit. Current size: ${(file.size / 1024 / 1024).toFixed(2)}MB`;
     }
     
     const validTypes = ['image/jpeg', 'image/png', 'image/tiff'];
@@ -263,7 +263,7 @@ const UploadScreen = () => {
                     </p>
                   </div>
                   <p className="text-muted-foreground text-xs italic">
-                    Supported formats: JPG, PNG, TIFF, SVS (Max 5MB)
+                    Supported formats: JPG, PNG, TIFF, SVS (Max 10MB)
                   </p>
                 </div>
               ) : (

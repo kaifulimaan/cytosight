@@ -212,26 +212,26 @@ def _generate_zone_reference_image(figsize=(5, 5)):
 
     # --- Labels ---
     ax.text(0.50, 0.52, 'Center',
-            ha='center', va='center', fontsize=8,
+            ha='center', va='center', fontsize=12,
             color='#C39BD3', fontweight='bold', zorder=4)
     ax.text(0.50, 0.46, 'innermost',
-            ha='center', va='center', fontsize=6.5,
+            ha='center', va='center', fontsize=10.5,
             color='#9B59B6', zorder=4)
 
     ax.text(0.50, 0.17, 'Mid-region',
-            ha='center', va='center', fontsize=7.5,
+            ha='center', va='center', fontsize=11.5,
             color='#85C1E9', fontweight='bold', zorder=4)
 
     ax.text(0.50, 0.93, 'Periphery',
-            ha='center', va='center', fontsize=7.5,
+            ha='center', va='center', fontsize=11.5,
             color='#82E0AA', fontweight='bold', zorder=4)
     ax.text(0.50, 0.88, '(image frame)',
-            ha='center', va='center', fontsize=6.0,
+            ha='center', va='center', fontsize=10.0,
             color='#4A8C5C', zorder=4)
 
     # --- Title ---
     ax.text(0.50, 0.98, 'Spatial attention zone reference',
-            ha='center', va='top', fontsize=7,
+            ha='center', va='top', fontsize=11,
             color='#A0A0C0', fontweight='bold', zorder=4)
 
     fig.canvas.draw()

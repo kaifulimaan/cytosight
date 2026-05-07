@@ -323,15 +323,15 @@ const DiagnosisResults = () => {
                   {/* Heatmap Intensity Scale */}
                   <div className="pt-2 px-1">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Heatmap Intensity Scale</span>
+                      <span className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Heatmap Intensity Scale</span>
                     </div>
-                    <div className="h-3 w-full rounded-full bg-gradient-to-r from-[#000080] via-[#00ffff] via-[#00ff00] via-[#ffff00] to-[#800000] border border-border/30 shadow-inner" />
-                    <div className="flex justify-between mt-1 px-1">
-                      <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">Low Focus</span>
-                      <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">25%</span>
-                      <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">50% (Mid)</span>
-                      <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">75%</span>
-                      <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">High Focus</span>
+                    <div className="h-4 w-full rounded-full bg-gradient-to-r from-[#000080] via-[#00ffff] via-[#00ff00] via-[#ffff00] to-[#800000] border border-border/30 shadow-inner" />
+                    <div className="flex justify-between mt-2 px-1">
+                      <span className="text-xs text-muted-foreground font-medium uppercase tracking-tighter">Low Focus</span>
+                      <span className="text-xs text-muted-foreground font-medium uppercase tracking-tighter">25%</span>
+                      <span className="text-xs text-muted-foreground font-medium uppercase tracking-tighter">50% (Mid)</span>
+                      <span className="text-xs text-muted-foreground font-medium uppercase tracking-tighter">75%</span>
+                      <span className="text-xs text-muted-foreground font-medium uppercase tracking-tighter">High Focus</span>
                     </div>
                   </div>
                 </div>
