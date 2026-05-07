@@ -222,17 +222,16 @@ def _generate_zone_reference_image(figsize=(5, 5)):
             ha='center', va='center', fontsize=11.5,
             color='#85C1E9', fontweight='bold', zorder=4)
 
-    ax.text(0.50, 0.93, 'Periphery',
+    ax.text(0.50, 0.90, 'Periphery',
             ha='center', va='center', fontsize=11.5,
             color='#82E0AA', fontweight='bold', zorder=4)
-    ax.text(0.50, 0.88, '(image frame)',
+    ax.text(0.50, 0.84, '(image frame)',
             ha='center', va='center', fontsize=10.0,
             color='#4A8C5C', zorder=4)
 
     # --- Title ---
-    ax.text(0.50, 0.98, 'Spatial attention zone reference',
-            ha='center', va='top', fontsize=11,
-            color='#A0A0C0', fontweight='bold', zorder=4)
+    ax.set_title('Spatial attention zone reference', 
+                 fontsize=12, color='#A0A0C0', fontweight='bold', pad=12)
 
     fig.canvas.draw()
     buf = fig.canvas.buffer_rgba()
@@ -431,28 +430,41 @@ class HeatmapFeatureExtractor:
                 
         return {'overlay_with_bbox': overlay}
 
-    def get_highest_attention_crop(self, threshold_ratio=0.6, padding=10):
+    def get_highest_attention_crop(self, threshold=0.6):
         heatmap_norm = (self.heatmap - self.heatmap.min()) / (self.heatmap.max() - self.heatmap.min() + 1e-6)
+        mask = (heatmap_norm >= threshold).astype(np.uint8) * 255
         
-        coords = np.argwhere(heatmap_norm >= threshold_ratio * heatmap_norm.max())
-        if len(coords) == 0:
-            return {'composite_image': self.original_image.copy()}
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Create a completely black mask for the whole image
+        visible_mask = np.zeros_like(self.original_image[:, :, 0])
+        
+        if contours:
+            for cnt in contours:
+                if cv2.contourArea(cnt) < 50: continue
+                x, y, w, h = cv2.boundingRect(cnt)
+                
+                # Add padding
+                pad = 25
+                x = max(0, x - pad)
+                y = max(0, y - pad)
+                w = min(self.original_image.shape[1] - x, w + 2*pad)
+                h = min(self.original_image.shape[0] - y, h + 2*pad)
+                
+                # Fill the bounding box area with white (visible)
+                cv2.rectangle(visible_mask, (x, y), (x + w, y + h), 255, -1)
+        else:
+            # If no contours, show whole image
+            visible_mask.fill(255)
             
-        y1, x1 = coords.min(axis=0)
-        y2, x2 = coords.max(axis=0)
+        # Apply mask: where mask is 0, make image dark (20% brightness)
+        darkened_image = (self.original_image * 0.2).astype(np.uint8)
         
-        h, w = self.original_image.shape[:2]
-        y1 = max(0, y1 - padding)
-        x1 = max(0, x1 - padding)
-        y2 = min(h, y2 + padding)
-        x2 = min(w, x2 + padding)
+        # Where visible_mask is 255, use original image, else use darkened_image
+        visible_mask_3d = np.stack([visible_mask]*3, axis=2)
+        composite = np.where(visible_mask_3d == 255, self.original_image, darkened_image)
         
-        crop = self.original_image[y1:y2, x1:x2]
-        if crop.size == 0:
-            return {'composite_image': self.original_image.copy()}
-            
-        crop_resized = cv2.resize(crop, (256, 256), interpolation=cv2.INTER_CUBIC)
-        return {'composite_image': crop_resized}
+        return {'composite_image': composite}
 
 # -------------------------------------------
 # Explainability Service
