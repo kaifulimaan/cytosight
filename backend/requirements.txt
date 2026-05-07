@@ -27,7 +27,7 @@ bcrypt>=4.3.0
 numpy<2.0.0
 torch==2.4.1+cpu
 torchvision==0.19.1+cpu
-transformers>=4.48.0
+transformers<4.48.0
 huggingface-hub>=0.23.0
 
 # Image and Data Processing
