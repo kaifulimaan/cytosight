@@ -407,12 +407,27 @@ class HeatmapFeatureExtractor:
         
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        overlay = self.original_image.copy()
+        # Apply jet colormap to heatmap
+        hm_uint8 = (heatmap_norm * 255).astype(np.uint8)
+        hm_colored = cv2.applyColorMap(hm_uint8, cv2.COLORMAP_JET)
+        hm_colored = cv2.cvtColor(hm_colored, cv2.COLOR_BGR2RGB)
+        
+        # Blend with original
+        overlay = cv2.addWeighted(self.original_image, 1 - alpha, hm_colored, alpha, 0)
+        
         if contours:
             for cnt in contours:
                 if cv2.contourArea(cnt) < 50: continue
                 x, y, w, h = cv2.boundingRect(cnt)
-                cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 255, 0), 2)
+                
+                # Add padding
+                pad = 15
+                x = max(0, x - pad)
+                y = max(0, y - pad)
+                w = min(overlay.shape[1] - x, w + 2*pad)
+                h = min(overlay.shape[0] - y, h + 2*pad)
+                
+                cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 255, 0), 4)
                 
         return {'overlay_with_bbox': overlay}
 
