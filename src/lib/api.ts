@@ -315,7 +315,9 @@ export async function fetchExplainability({
 }) {
   return apiCall<{
     attention_heatmap_base64: string;
-    gradcam_heatmap_base64: string;
+    attention_bbox_base64: string;
+    highest_attention_crop_base64: string;
+    zone_reference_base64: string;
     gpt_statement: string;
   }>("POST", "/explain", {
     image_url: imageUrl,

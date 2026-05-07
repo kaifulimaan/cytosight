@@ -50,7 +50,9 @@ const DiagnosisResults = () => {
 
   const [explainData, setExplainData] = useState<{
     attention_heatmap_base64: string;
-    gradcam_heatmap_base64: string;
+    attention_bbox_base64: string;
+    highest_attention_crop_base64: string;
+    zone_reference_base64: string;
     gpt_statement: string;
   } | null>(null);
   const [explainLoading, setExplainLoading] = useState(true);
@@ -244,7 +246,7 @@ const DiagnosisResults = () => {
                       if (formattedSections.length === 0) {
                         return (
                           <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10 shadow-sm">
-                            <p className="text-foreground leading-relaxed whitespace-pre-wrap">
+                            <p className="text-foreground text-lg leading-relaxed whitespace-pre-wrap font-medium">
                               {text}
                             </p>
                           </div>
@@ -279,26 +281,40 @@ const DiagnosisResults = () => {
                     })()}
                   </div>
                   
-                  {/* Heatmaps */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                  {/* Heatmaps / XAI Panels */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+                    {/* Attention Heatmap + BBox */}
                     <div className="group space-y-3">
                       <div className="flex items-center gap-2 px-1">
                         <BarChart3 className="w-4 h-4 text-purple-400" />
-                        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Attention Heatmap</h3>
+                        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Attention + BBox</h3>
                       </div>
                       <div className="relative rounded-2xl overflow-hidden border border-border/50 shadow-lg group-hover:border-primary/30 transition-colors">
-                        <img src={explainData.attention_heatmap_base64} alt="Attention Heatmap" className="w-full h-auto object-contain" />
+                        <img src={explainData.attention_bbox_base64} alt="Attention Heatmap + BBox" className="w-full h-auto object-contain" />
                         <div className="absolute inset-0 bg-gradient-to-t from-background/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </div>
                     
+                    {/* Highest Attention Crop */}
                     <div className="group space-y-3">
                       <div className="flex items-center gap-2 px-1">
-                        <Activity className="w-4 h-4 text-orange-400" />
-                        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Grad-CAM Heatmap</h3>
+                        <Eye className="w-4 h-4 text-blue-400" />
+                        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Attention Crop</h3>
                       </div>
                       <div className="relative rounded-2xl overflow-hidden border border-border/50 shadow-lg group-hover:border-primary/30 transition-colors">
-                        <img src={explainData.gradcam_heatmap_base64} alt="Grad-CAM Heatmap" className="w-full h-auto object-contain" />
+                        <img src={explainData.highest_attention_crop_base64} alt="Highest Attention Crop" className="w-full h-auto object-contain" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-background/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    </div>
+
+                    {/* Zone Reference */}
+                    <div className="group space-y-3">
+                      <div className="flex items-center gap-2 px-1">
+                        <Info className="w-4 h-4 text-primary" />
+                        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Zone Reference</h3>
+                      </div>
+                      <div className="relative rounded-2xl overflow-hidden border border-border/50 shadow-lg group-hover:border-primary/30 transition-colors">
+                        <img src={explainData.zone_reference_base64} alt="Spatial Zone Reference" className="w-full h-auto object-contain" />
                         <div className="absolute inset-0 bg-gradient-to-t from-background/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </div>

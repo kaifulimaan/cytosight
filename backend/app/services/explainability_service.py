@@ -5,6 +5,10 @@ import cv2
 import os
 import logging
 import time
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from scipy.ndimage import gaussian_filter, zoom, maximum_filter
 from sklearn.cluster import DBSCAN
 from skimage.feature import graycomatrix, graycoprops
@@ -160,6 +164,84 @@ def create_patch_attention_heatmap(patch_attention_grid, target_shape):
     heatmap = gaussian_filter(heatmap, sigma=5)
     return heatmap
 
+def _generate_zone_reference_image(figsize=(5, 5)):
+    """
+    Renders a static square bullseye zone reference diagram.
+    """
+    fig, ax = plt.subplots(figsize=figsize, facecolor='#1A1A2E')
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    ax.set_facecolor('#1A1A2E')
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+    # --- Periphery ---
+    periphery = mpatches.FancyBboxPatch(
+        (0.05, 0.05), 0.90, 0.90,
+        boxstyle="square,pad=0",
+        linewidth=2.0,
+        edgecolor='#2ECC71',
+        facecolor='#1E3A2E',
+        zorder=1
+    )
+    ax.add_patch(periphery)
+
+    # --- Mid-region ---
+    mid = mpatches.FancyBboxPatch(
+        (0.22, 0.22), 0.56, 0.56,
+        boxstyle="square,pad=0",
+        linewidth=2.0,
+        linestyle='--',
+        edgecolor='#3498DB',
+        facecolor='#1E2A3E',
+        zorder=2
+    )
+    ax.add_patch(mid)
+
+    # --- Center ---
+    center = mpatches.FancyBboxPatch(
+        (0.38, 0.38), 0.24, 0.24,
+        boxstyle="square,pad=0",
+        linewidth=2.0,
+        edgecolor='#9B59B6',
+        facecolor='#2E1E3E',
+        zorder=3
+    )
+    ax.add_patch(center)
+
+    # --- Labels ---
+    ax.text(0.50, 0.52, 'Center',
+            ha='center', va='center', fontsize=8,
+            color='#C39BD3', fontweight='bold', zorder=4)
+    ax.text(0.50, 0.46, 'innermost',
+            ha='center', va='center', fontsize=6.5,
+            color='#9B59B6', zorder=4)
+
+    ax.text(0.50, 0.17, 'Mid-region',
+            ha='center', va='center', fontsize=7.5,
+            color='#85C1E9', fontweight='bold', zorder=4)
+
+    ax.text(0.50, 0.93, 'Periphery',
+            ha='center', va='center', fontsize=7.5,
+            color='#82E0AA', fontweight='bold', zorder=4)
+    ax.text(0.50, 0.88, '(image frame)',
+            ha='center', va='center', fontsize=6.0,
+            color='#4A8C5C', zorder=4)
+
+    # --- Title ---
+    ax.text(0.50, 0.98, 'Spatial attention zone reference',
+            ha='center', va='top', fontsize=7,
+            color='#A0A0C0', fontweight='bold', zorder=4)
+
+    fig.canvas.draw()
+    buf = fig.canvas.buffer_rgba()
+    img_array = np.frombuffer(buf, dtype=np.uint8).reshape(
+        fig.canvas.get_width_height()[::-1] + (4,)
+    )
+    plt.close(fig)
+    return img_array[:, :, :3]
+
 # -------------------------------------------
 # Feature Extractor
 # -------------------------------------------
@@ -289,15 +371,11 @@ class HeatmapFeatureExtractor:
         heatmap_norm = (self.heatmap - self.heatmap.min()) / (self.heatmap.max() - self.heatmap.min() + 1e-6)
         mask = (heatmap_norm >= threshold_ratio).astype(np.uint8)
         
-        if np.sum(mask) < 100: return {"classification": "insufficient", "scores": {"uniformity": 0, "smoothness": 0}}
+        if np.sum(mask) < 100: return {"classification": "insufficient", "scores": {"uniformity": 0, "smoothness": 0, "complexity": 0, "organization": 0}}
         
         gray = cv2.cvtColor(self.original_image, cv2.COLOR_RGB2GRAY)
         focused_gray = gray[mask == 1]
         
-        # For simplicity, we use the whole original image's GLCM if mask is complex, 
-        # or just quantize the focused region.
-        quantized = (focused_gray / 4).astype(np.uint8)
-        # GLCM requires a 2D array, so we take a bounding box
         y_coords, x_coords = np.where(mask == 1)
         region = gray[y_coords.min():y_coords.max(), x_coords.min():x_coords.max()]
         quantized_region = (region / 4).astype(np.uint8)
@@ -321,7 +399,45 @@ class HeatmapFeatureExtractor:
                 }
             }
         except:
-            return {"classification": "error", "scores": {"uniformity": 50, "smoothness": 50}}
+            return {"classification": "error", "scores": {"uniformity": 50, "smoothness": 50, "complexity": 50, "organization": 50}}
+
+    def get_brightest_region_overlay(self, threshold=0.6, alpha=0.5):
+        heatmap_norm = (self.heatmap - self.heatmap.min()) / (self.heatmap.max() - self.heatmap.min() + 1e-6)
+        mask = (heatmap_norm >= threshold).astype(np.uint8) * 255
+        
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        overlay = self.original_image.copy()
+        if contours:
+            for cnt in contours:
+                if cv2.contourArea(cnt) < 50: continue
+                x, y, w, h = cv2.boundingRect(cnt)
+                cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 255, 0), 2)
+                
+        return {'overlay_with_bbox': overlay}
+
+    def get_highest_attention_crop(self, threshold_ratio=0.6, padding=10):
+        heatmap_norm = (self.heatmap - self.heatmap.min()) / (self.heatmap.max() - self.heatmap.min() + 1e-6)
+        
+        coords = np.argwhere(heatmap_norm >= threshold_ratio * heatmap_norm.max())
+        if len(coords) == 0:
+            return {'composite_image': self.original_image.copy()}
+            
+        y1, x1 = coords.min(axis=0)
+        y2, x2 = coords.max(axis=0)
+        
+        h, w = self.original_image.shape[:2]
+        y1 = max(0, y1 - padding)
+        x1 = max(0, x1 - padding)
+        y2 = min(h, y2 + padding)
+        x2 = min(w, x2 + padding)
+        
+        crop = self.original_image[y1:y2, x1:x2]
+        if crop.size == 0:
+            return {'composite_image': self.original_image.copy()}
+            
+        crop_resized = cv2.resize(crop, (256, 256), interpolation=cv2.INTER_CUBIC)
+        return {'composite_image': crop_resized}
 
 # -------------------------------------------
 # Explainability Service
@@ -332,39 +448,41 @@ class ExplainabilityService:
         self.device = self.wrapper.device
         self.model = self.wrapper.model
     
-    def generate_heatmaps(self, preprocessed_image, diagnosis_data: dict) -> tuple[np.ndarray, np.ndarray, dict]:
+    def generate_heatmaps(self, preprocessed_image, original_array, diagnosis_data: dict) -> dict:
         """
-        Generates Attention Heatmap, GradCAM, and visual features.
+        Generates comprehensive XAI results.
         """
-        disease_name = diagnosis_data.get('disease', {}).get('key', '')
         disease_idx = diagnosis_data.get('disease', {}).get('index', 0)
         
         # 1. Attention Heatmap
         patch_attention = extract_patch_level_attention(self.model.backbone, preprocessed_image, self.device)
         attention_heatmap = create_patch_attention_heatmap(patch_attention, (256, 256))
         
-        # 2. GradCAM
-        gradcam_wrapper = GradCAMVisionTransformer(self.model, self.device)
-        disease_cam = gradcam_wrapper.generate_heatmap(preprocessed_image.clone(), disease_idx, head_type='disease')
+        # 2. Extract Features
+        extractor = HeatmapFeatureExtractor(attention_heatmap, original_array)
         
+        # 3. Generate Overlays & Crops
+        bbox_result = extractor.get_brightest_region_overlay(threshold=0.6)
+        crop_result = extractor.get_highest_attention_crop(threshold_ratio=0.6)
+        zone_ref = _generate_zone_reference_image()
+        
+        # 4. GradCAM (kept for GPT explanation but not UI)
         try:
-            severity_idx = diagnosis_data.get('severity', {}).get('level', 1)
-            severity_cam = gradcam_wrapper.generate_heatmap(preprocessed_image.clone(), severity_idx, head_type='severity', disease_name=disease_name)
+            gradcam_wrapper = GradCAMVisionTransformer(self.model, self.device)
+            disease_cam = gradcam_wrapper.generate_heatmap(preprocessed_image.clone(), disease_idx, head_type='disease')
+            # For simplicity, we just use disease_cam for now
+            union_cam = disease_cam
         except Exception as e:
-            logger.warning(f"Failed to generate severity GradCAM: {e}")
-            severity_cam = disease_cam
+            logger.warning(f"Failed to generate GradCAM: {e}")
+            union_cam = attention_heatmap
             
-        union_cam = (disease_cam + severity_cam) / 2.0
-        
-        # 3. Features
-        original_img = np.array(zoom(preprocessed_image[0].cpu().numpy().transpose(1, 2, 0), (256/224, 256/224, 1), order=1))
-        # Note: zoom might shift values, let's use a cleaner way or just use the original image array passed from API
-        # Actually the API already passes original_array. Let's assume we use that.
-        
-        # We'll pass original_array from API to this method later, for now we calculate features using attention_heatmap
-        # and we need the original_image for color/texture.
-        
-        return attention_heatmap, union_cam, {} # Placeholder for now, features extracted in generate_comprehensive_features
+        return {
+            'attention_heatmap': attention_heatmap,
+            'bbox_overlay': bbox_result['overlay_with_bbox'],
+            'highest_attention_crop': crop_result['composite_image'],
+            'zone_reference': zone_ref,
+            'gradcam_heatmap': union_cam  # Kept for GPT prompt
+        }
 
     def generate_comprehensive_features(self, attention_heatmap, original_array) -> dict:
         extractor = HeatmapFeatureExtractor(attention_heatmap, original_array)
@@ -392,7 +510,7 @@ class ExplainabilityService:
         }
 
     def generate_gpt_explanation(self, features: dict, diagnosis_data: dict) -> str:
-        """Calls OpenAI for textual explanation."""
+        """Calls OpenAI for textual explanation using the updated Kaggle-style prompt."""
         from app.config import settings
         
         disease_name = diagnosis_data.get('disease', {}).get('name', 'Unknown')
@@ -405,7 +523,7 @@ class ExplainabilityService:
         try:
             api_key = settings.openai_api_key
             if not api_key:
-                raise ValueError("OPENAI_API_KEY is not set in environment variables.")
+                raise ValueError("OPENAI_API_KEY is not set.")
                 
             client = OpenAI(api_key=api_key)
             
@@ -416,10 +534,10 @@ HIERARCHICAL MODEL PREDICTION:
 - Status Level: {severity} ({severity_conf:.1%} confidence)
 - Stage Level: {stage} ({stage_conf:.1%} confidence)
 
-GRADCAM ANALYSIS (Gradient-weighted Class Activation Mapping):
-- Note: Bright/warm regions in GradCAM indicate areas that most strongly influenced the model's prediction
+GRADCAM ANALYSIS:
+- Note: Bright/warm regions indicate areas that most strongly influenced the model's prediction.
 
-SPATIAL ATTENTION PATTERN AND VISUAL CHARACTERISTICS (from Attention Heatmap):
+SPATIAL ATTENTION PATTERN AND VISUAL CHARACTERISTICS:
 - Primary Focus: {features['primary_position']} (intensity: {features['primary_intensity']:.2f})
 - Attention Hotspots: {features['hotspot_count']}
 - Spatial Distribution: Center {features['center_attention']:.1f}%, Mid-region {features['mid_attention']:.1f}%, Periphery {features['periphery_attention']:.1f}%
@@ -434,10 +552,10 @@ CRITICAL INSTRUCTIONS:
 3. Explain how the two explainability methods (Attention Heatmap and GradCAM) show WHERE the model focused.
 4. Describe WHAT visual patterns were detected, not WHY medically.
 5. Keep it concise but informative (under 100 words).
-6. Structure with the following EXACT section headers: [MODEL DECISION], [WHERE IT LOOKED], [GRADCAM INSIGHTS], [ATTENTION HEATMAP INSIGHTS], and [VISUAL CHARACTERISTICS].
+6. Structure with natural paragraphs, but ensure you cover what the model decided, where it looked, and visual characteristics.
 7. Make it conversational but professional.
 
-Generate a comprehensive explanation covering: what the model decided, where it looked, what the Attention and GradCAM methods revealed, and what visual characteristics were important. Use the [HEADER] format for each section."""
+Generate a comprehensive explanation covering: what the model decided, where it looked, what the Attention and GradCAM methods revealed, and what visual characteristics were important."""
 
             response = client.chat.completions.create(
                 model="gpt-4o-mini",

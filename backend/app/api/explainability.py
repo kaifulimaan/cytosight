@@ -26,7 +26,9 @@ class ExplainRequest(BaseModel):
 
 class ExplainResponse(BaseModel):
     attention_heatmap_base64: str
-    gradcam_heatmap_base64: str
+    attention_bbox_base64: str
+    highest_attention_crop_base64: str
+    zone_reference_base64: str
     gpt_statement: str
 
 def get_image_bytes(image_url: str) -> bytes:
@@ -89,24 +91,34 @@ async def explain_prediction(request: ExplainRequest):
         
         # 3. Generate XAI Maps
         service = ExplainabilityService(wrapper)
-        attention_heatmap, gradcam_heatmap, _ = service.generate_heatmaps(
+        xai_results = service.generate_heatmaps(
             preprocessed_image, 
+            original_array,
             request.diagnosis_data
         )
         
         # 4. Extract comprehensive features for GPT
-        features = service.generate_comprehensive_features(attention_heatmap, original_array)
+        features = service.generate_comprehensive_features(xai_results['attention_heatmap'], original_array)
         
-        # 5. Generate Overlays
-        attention_overlay = build_overlay(original_array, attention_heatmap)
-        gradcam_overlay = build_overlay(original_array, gradcam_heatmap)
+        # 5. Generate Overlays & Base64 conversions
+        attention_overlay = build_overlay(original_array, xai_results['attention_heatmap'])
         
+        # Helper for direct image to base64 (for bbox, crop, zone which are already RGB/BGR)
+        def image_to_base64(img: np.ndarray) -> str:
+            # If it's BGR from cv2, keep it. If RGB, convert to BGR for imencode
+            img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            _, buffer = cv2.imencode('.jpg', img_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            b64 = base64.b64encode(buffer).decode('utf-8')
+            return f"data:image/jpeg;base64,{b64}"
+
         # 6. Generate GPT Statement
         gpt_statement = service.generate_gpt_explanation(features, request.diagnosis_data)
         
         return ExplainResponse(
             attention_heatmap_base64=tensor_to_base64(attention_overlay),
-            gradcam_heatmap_base64=tensor_to_base64(gradcam_overlay),
+            attention_bbox_base64=image_to_base64(xai_results['bbox_overlay']),
+            highest_attention_crop_base64=image_to_base64(xai_results['highest_attention_crop']),
+            zone_reference_base64=image_to_base64(xai_results['zone_reference']),
             gpt_statement=gpt_statement
         )
         
