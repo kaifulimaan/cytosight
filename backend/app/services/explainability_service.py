@@ -421,13 +421,13 @@ class HeatmapFeatureExtractor:
                 x, y, w, h = cv2.boundingRect(cnt)
                 
                 # Add padding
-                pad = 15
+                pad = 25
                 x = max(0, x - pad)
                 y = max(0, y - pad)
                 w = min(overlay.shape[1] - x, w + 2*pad)
                 h = min(overlay.shape[0] - y, h + 2*pad)
                 
-                cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 255, 0), 4)
+                cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 0, 0), 4)
                 
         return {'overlay_with_bbox': overlay}
 
@@ -569,6 +569,8 @@ CRITICAL INSTRUCTIONS:
 5. Keep it concise but informative (under 100 words).
 6. Structure with natural paragraphs, but ensure you cover what the model decided, where it looked, and visual characteristics.
 7. Make it conversational but professional.
+8. Start the explanation by stating: "The model classified the attached microscopic cell image as [Region/Disease]..."
+9. Explicitly mention that the area highlighted by the red bounding box indicates the highest level of model focus.
 
 Generate a comprehensive explanation covering: what the model decided, where it looked, what the Attention and GradCAM methods revealed, and what visual characteristics were important."""
 
@@ -584,7 +586,7 @@ Generate a comprehensive explanation covering: what the model decided, where it 
             return response.choices[0].message.content.strip()
         except Exception as e:
             logger.warning(f"OpenAI API call failed: {e}. Using fallback.")
-            return f"The model classified this as '{disease_name}' with status '{severity}'. The primary focus was in the {features['primary_position']} region, showing a {features['scatter_level']} scatter across {features['num_clusters']} clusters. The attention distribution was {features['center_attention']:.1f}% central, {features['mid_attention']:.1f}% mid-region, and {features['periphery_attention']:.1f}% peripheral."
+            return f"The model classified the attached microscopic cell image as '{disease_name}' with status '{severity}'. The primary focus was in the {features['primary_position']} region, showing a {features['scatter_level']} scatter across {features['num_clusters']} clusters. The attention distribution was {features['center_attention']:.1f}% central, {features['mid_attention']:.1f}% mid-region, and {features['periphery_attention']:.1f}% peripheral. The area highlighted by the red bounding box indicates the highest level of model focus."
 
 def build_overlay(img_array: np.ndarray, heatmap: np.ndarray) -> np.ndarray:
     """Creates a base64 ready RGB image overlay."""
